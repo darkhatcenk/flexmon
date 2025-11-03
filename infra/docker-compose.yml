@@ -1,0 +1,185 @@
+version: '3.8'
+
+services:
+  # TimescaleDB - Time-series metrics storage
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: flexmon-timescaledb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-flexmon}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: ${POSTGRES_DB:-flexmon}
+    secrets:
+      - db_password
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ../backend/api/src/models/timescale_schemas.sql:/docker-entrypoint-initdb.d/01-schemas.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flexmon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - flexmon-net
+
+  # Elasticsearch - Log storage and search
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: flexmon-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - ELASTIC_PASSWORD_FILE=/run/secrets/elastic_password
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+    secrets:
+      - elastic_password
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -u elastic:$$(cat /run/secrets/elastic_password) http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - flexmon-net
+
+  # XMPP Server - Agent messaging
+  xmpp:
+    image: ejabberd/ecs:latest
+    container_name: flexmon-xmpp
+    environment:
+      - ERLANG_NODE_ARG=flexmon
+      - CTL_ON_CREATE=register admin localhost ${XMPP_ADMIN_PASSWORD:-changeme}
+      - CTL_ON_START=stats registeredusers
+    volumes:
+      - xmpp_data:/home/ejabberd/database
+      - ../infra/certificates:/home/ejabberd/conf/certs:ro
+    ports:
+      - "5222:5222"  # Client connections
+      - "5269:5269"  # Server connections
+      - "5280:5280"  # HTTP
+    networks:
+      - flexmon-net
+
+  # License API - License validation service
+  license-api:
+    build:
+      context: ../backend/license-api
+      dockerfile: Dockerfile
+    container_name: flexmon-license-api
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-flexmon}:$$(cat /run/secrets/db_password)@timescaledb:5432/${POSTGRES_DB:-flexmon}
+      - API_SECRET_KEY_FILE=/run/secrets/api_secret
+    secrets:
+      - db_password
+      - api_secret
+    ports:
+      - "8001:8001"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - flexmon-net
+    restart: unless-stopped
+
+  # Backend API - Main application
+  api:
+    build:
+      context: ../backend/api
+      dockerfile: Dockerfile
+    container_name: flexmon-api
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-flexmon}:$$(cat /run/secrets/db_password)@timescaledb:5432/${POSTGRES_DB:-flexmon}
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_USER=elastic
+      - ELASTICSEARCH_PASSWORD_FILE=/run/secrets/elastic_password
+      - XMPP_HOST=xmpp
+      - XMPP_PORT=5222
+      - LICENSE_API_URL=http://license-api:8001
+      - API_SECRET_KEY_FILE=/run/secrets/api_secret
+      - AI_API_URL=${AI_API_URL:-https://ai.cloudflex.tr}
+      - AI_API_TOKEN_FILE=/run/secrets/ai_token
+      - TLS_CERT_PATH=/app/certs/server.crt
+      - TLS_KEY_PATH=/app/certs/server.key
+      - ENABLE_MTLS=${ENABLE_MTLS:-false}
+    secrets:
+      - db_password
+      - elastic_password
+      - api_secret
+      - ai_token
+    volumes:
+      - ../infra/certificates:/app/certs:ro
+      - backup_data:/app/backups
+    ports:
+      - "8000:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      license-api:
+        condition: service_started
+    networks:
+      - flexmon-net
+    restart: unless-stopped
+
+  # Gateway (optional) - Regional proxy
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    container_name: flexmon-gateway
+    environment:
+      - CENTRAL_API_URL=${CENTRAL_API_URL:-http://api:8000}
+      - GATEWAY_PORT=8002
+      - RATE_LIMIT_PER_MIN=${GATEWAY_RATE_LIMIT:-1000}
+    ports:
+      - "8002:8002"
+    depends_on:
+      - api
+    networks:
+      - flexmon-net
+    restart: unless-stopped
+    profiles:
+      - gateway
+
+  # Frontend - React UI
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+    container_name: flexmon-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - flexmon-net
+    restart: unless-stopped
+
+networks:
+  flexmon-net:
+    driver: bridge
+
+volumes:
+  timescale_data:
+  es_data:
+  xmpp_data:
+  backup_data:
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  elastic_password:
+    file: ./secrets/elastic_password.txt
+  api_secret:
+    file: ./secrets/api_secret.txt
+  ai_token:
+    file: ./secrets/ai_token.txt

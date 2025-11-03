@@ -1,0 +1,139 @@
+{
+  "index_patterns": ["logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "flexmon-logs-ilm",
+      "index.lifecycle.rollover_alias": "logs",
+      "refresh_interval": "5s",
+      "codec": "best_compression"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "timestamp": {
+          "type": "date"
+        },
+        "tenant_id": {
+          "type": "keyword"
+        },
+        "host": {
+          "type": "keyword"
+        },
+        "hostname": {
+          "type": "keyword"
+        },
+        "level": {
+          "type": "keyword"
+        },
+        "severity": {
+          "type": "keyword"
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "source": {
+          "type": "keyword"
+        },
+        "application": {
+          "type": "keyword"
+        },
+        "process": {
+          "type": "keyword"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "thread": {
+          "type": "keyword"
+        },
+        "logger": {
+          "type": "keyword"
+        },
+        "stack_trace": {
+          "type": "text"
+        },
+        "tags": {
+          "type": "keyword"
+        },
+        "labels": {
+          "type": "object",
+          "enabled": true
+        },
+        "metadata": {
+          "type": "object",
+          "enabled": true
+        },
+        "error": {
+          "properties": {
+            "type": {
+              "type": "keyword"
+            },
+            "message": {
+              "type": "text"
+            },
+            "stack_trace": {
+              "type": "text"
+            }
+          }
+        },
+        "http": {
+          "properties": {
+            "method": {
+              "type": "keyword"
+            },
+            "url": {
+              "type": "text",
+              "fields": {
+                "keyword": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "status_code": {
+              "type": "integer"
+            },
+            "response_time_ms": {
+              "type": "float"
+            },
+            "user_agent": {
+              "type": "text"
+            },
+            "remote_ip": {
+              "type": "ip"
+            }
+          }
+        },
+        "file": {
+          "properties": {
+            "path": {
+              "type": "text",
+              "fields": {
+                "keyword": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "line": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    }
+  },
+  "priority": 100,
+  "version": 1,
+  "_meta": {
+    "description": "FlexMON logs index template"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "rules": [
+    {
+      "name": "High CPU Usage",
+      "description": "CPU usage exceeds 85% for 5 minutes",
+      "type": "threshold",
+      "metric": "cpu_percent",
+      "condition": ">",
+      "threshold": 85,
+      "duration_minutes": 5,
+      "severity": "warning",
+      "enabled": true,
+      "tags": ["cpu", "performance"]
+    },
+    {
+      "name": "Critical CPU Usage",
+      "description": "CPU usage exceeds 95% for 2 minutes",
+      "type": "threshold",
+      "metric": "cpu_percent",
+      "condition": ">",
+      "threshold": 95,
+      "duration_minutes": 2,
+      "severity": "critical",
+      "enabled": true,
+      "tags": ["cpu", "performance"]
+    },
+    {
+      "name": "High Memory Usage",
+      "description": "Memory usage exceeds 90%",
+      "type": "threshold",
+      "metric": "memory_percent",
+      "condition": ">",
+      "threshold": 90,
+      "duration_minutes": 5,
+      "severity": "warning",
+      "enabled": true,
+      "tags": ["memory", "performance"]
+    },
+    {
+      "name": "Critical Memory Usage",
+      "description": "Memory usage exceeds 95%",
+      "type": "threshold",
+      "metric": "memory_percent",
+      "condition": ">",
+      "threshold": 95,
+      "duration_minutes": 2,
+      "severity": "critical",
+      "enabled": true,
+      "tags": ["memory", "performance"]
+    },
+    {
+      "name": "High Disk Usage",
+      "description": "Disk usage exceeds 90%",
+      "type": "threshold",
+      "metric": "disk_percent",
+      "condition": ">",
+      "threshold": 90,
+      "duration_minutes": 10,
+      "severity": "warning",
+      "enabled": true,
+      "tags": ["disk", "storage"]
+    },
+    {
+      "name": "Critical Disk Usage",
+      "description": "Disk usage exceeds 95%",
+      "type": "threshold",
+      "metric": "disk_percent",
+      "condition": ">",
+      "threshold": 95,
+      "duration_minutes": 5,
+      "severity": "critical",
+      "enabled": true,
+      "tags": ["disk", "storage"]
+    },
+    {
+      "name": "Node Down",
+      "description": "No metrics received for 5 minutes",
+      "type": "absence",
+      "metric": "heartbeat",
+      "duration_minutes": 5,
+      "severity": "critical",
+      "enabled": true,
+      "tags": ["availability", "node"]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{"@timestamp":"2025-11-03T00:00:00Z","timestamp":"2025-11-03T00:00:00Z","tenant_id":"demo","host":"server-01","level":"INFO","message":"Application started successfully","source":"app.main","application":"web-server"}
+{"@timestamp":"2025-11-03T00:00:30Z","timestamp":"2025-11-03T00:00:30Z","tenant_id":"demo","host":"server-01","level":"INFO","message":"HTTP request processed","source":"app.api","http":{"method":"GET","url":"/api/users","status_code":200,"response_time_ms":45.2}}
+{"@timestamp":"2025-11-03T00:01:00Z","timestamp":"2025-11-03T00:01:00Z","tenant_id":"demo","host":"server-01","level":"WARNING","message":"High CPU usage detected","source":"monitor","metadata":{"cpu_percent":85.5}}
+{"@timestamp":"2025-11-03T00:01:30Z","timestamp":"2025-11-03T00:01:30Z","tenant_id":"demo","host":"server-02","level":"ERROR","message":"Database connection failed","source":"db.client","error":{"type":"ConnectionError","message":"Connection timeout after 30s"}}
+{"@timestamp":"2025-11-03T00:02:00Z","timestamp":"2025-11-03T00:02:00Z","tenant_id":"demo","host":"server-02","level":"INFO","message":"Database connection restored","source":"db.client"}

@@ -1,0 +1,65 @@
+{
+  "index_patterns": ["platform-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "flexmon-platform-logs-ilm",
+      "index.lifecycle.rollover_alias": "platform-logs",
+      "refresh_interval": "30s",
+      "codec": "best_compression"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "timestamp": {
+          "type": "date"
+        },
+        "user_id": {
+          "type": "integer"
+        },
+        "username": {
+          "type": "keyword"
+        },
+        "action": {
+          "type": "keyword"
+        },
+        "resource_type": {
+          "type": "keyword"
+        },
+        "resource_id": {
+          "type": "keyword"
+        },
+        "details": {
+          "type": "object",
+          "enabled": true
+        },
+        "ip_address": {
+          "type": "ip"
+        },
+        "user_agent": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "error_message": {
+          "type": "text"
+        }
+      }
+    }
+  },
+  "priority": 100,
+  "version": 1,
+  "_meta": {
+    "description": "FlexMON platform audit logs index template"
+  }
+}
