@@ -20,3 +20,6 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )
+
+// Replace to ensure known-good plan9stats revision for deterministic builds
+replace github.com/lufia/plan9stats => github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0

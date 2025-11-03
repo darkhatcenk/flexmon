@@ -2,16 +2,22 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files (both package.json and package-lock.json if it exists)
+# Enable legacy peer deps for compatibility
+ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
+
+# Copy manifest(s)
 COPY package*.json ./
 
-# Install dependencies with fallback: use npm ci if lock file exists, otherwise npm install
+# Deterministic install:
+# - If package-lock.json exists -> npm ci
+# - Else -> generate lock with legacy peer deps, then npm ci
 RUN if [ -f package-lock.json ]; then \
-      echo "Found package-lock.json, using npm ci..."; \
+      echo "Using existing package-lock.json -> npm ci"; \
       npm ci --no-audit --no-fund; \
     else \
-      echo "No package-lock.json found, using npm install..."; \
-      npm install --no-audit --no-fund; \
+      echo "No lockfile -> generating with legacy peer deps"; \
+      npm install --package-lock-only --legacy-peer-deps --no-audit --no-fund; \
+      npm ci --no-audit --no-fund; \
     fi
 
 # Copy source code
