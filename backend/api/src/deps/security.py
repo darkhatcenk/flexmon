@@ -110,13 +110,22 @@ async def get_tenant_admin(current_user: dict = Depends(get_current_user)) -> di
 
 
 def verify_webhook_hmac(
-    signature: Annotated[str, Header(alias="X-Webhook-Signature")],
+    signature: str,
     body: bytes,
     secret: str
 ) -> bool:
-    """Verify HMAC signature for webhook requests"""
+    """
+    Verify HMAC signature for webhook requests
+    Signature format: sha256=<hexdigest>
+    """
     import hmac
     import hashlib
+
+    if not signature:
+        return False
+
+    # Remove 'sha256=' prefix if present
+    sig_value = signature.replace("sha256=", "").replace("SHA256=", "")
 
     expected_signature = hmac.new(
         secret.encode(),
@@ -124,4 +133,4 @@ def verify_webhook_hmac(
         hashlib.sha256
     ).hexdigest()
 
-    return hmac.compare_digest(signature, f"sha256={expected_signature}")
+    return hmac.compare_digest(sig_value, expected_signature)

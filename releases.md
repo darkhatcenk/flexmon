@@ -117,3 +117,16 @@ All notable changes to this project will be documented in this file.
 - Verified build.sh builds all services: backend/api, license-api, agent, gateway, frontend
 - Verified seed files present: default_rules.yaml (4.9K), default_rules.json (2.2K), demo_metrics.ndjson (1.6K), demo_logs.ndjson (1.2K)
 - All infrastructure requirements complete and tested
+
+### 2025-11-03 01:30 UTC — Backend core enhancements (P2)
+- Enhanced metrics_ingest.py with license validation - blocks unlicensed tenants with HTTP 402
+- Added agent last_seen timestamp updates during metrics ingestion
+- Fixed HMAC verification in alerts_webhooks.py to properly check return value
+- Enhanced alerts_engine.py with ratio-based rule evaluation (e.g., error_rate = errors/total)
+- Enhanced alerts_engine.py with anomaly detection for network spike detection using baseline comparison
+- Added ES query-based alert evaluation in alerts_engine.py for log pattern matching
+- Enhanced licensing.py to raise platform alarms when licenses expire or grace periods end
+- Added _raise_platform_alarm() method with 24-hour deduplication for licensing issues
+- Verified all routers complete with working logic: users, auth, discovery, ai_explain, alerts_rules, metrics_ingest, alerts_webhooks
+- Verified notifications.py has complete multi-channel support (Email/SMTP, Slack, Teams, Telegram, WhatsApp)
+- All P2 backend core requirements complete and functional

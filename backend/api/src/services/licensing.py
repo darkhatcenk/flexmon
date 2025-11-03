@@ -109,6 +109,14 @@ class LicensingService:
                 tenant["id"]
             )
             logger.warning(f"Grace period started for tenant {tenant['id']} until {grace_until}")
+
+            # Raise platform alarm (warning)
+            await self._raise_platform_alarm(
+                tenant["id"],
+                "warning",
+                "License Missing",
+                f"Tenant {tenant['name']} has no license key. Grace period started until {grace_until.strftime('%Y-%m-%d %H:%M UTC')}."
+            )
         elif datetime.utcnow() > tenant["grace_period_until"]:
             # Grace period expired, disable tenant
             await timescale.execute_query(
@@ -116,6 +124,14 @@ class LicensingService:
                 tenant["id"]
             )
             logger.warning(f"Tenant {tenant['id']} disabled (grace period expired)")
+
+            # Raise platform alarm (critical)
+            await self._raise_platform_alarm(
+                tenant["id"],
+                "critical",
+                "Tenant Disabled - License Required",
+                f"Tenant {tenant['name']} has been disabled due to missing license. Metrics ingestion blocked."
+            )
 
     async def _handle_invalid_license(self, tenant: dict):
         """Handle tenant with invalid license"""
@@ -131,12 +147,76 @@ class LicensingService:
                     tenant["id"]
                 )
                 logger.warning(f"License expired for tenant {tenant['id']}, grace period until {grace_until}")
+
+                # Raise platform alarm (error)
+                await self._raise_platform_alarm(
+                    tenant["id"],
+                    "error",
+                    "License Expired",
+                    f"License for tenant {tenant['name']} expired on {expires_at.strftime('%Y-%m-%d')}. Grace period until {grace_until.strftime('%Y-%m-%d %H:%M UTC')}."
+                )
             elif datetime.utcnow() > tenant["grace_period_until"]:
                 await timescale.execute_query(
                     "UPDATE tenants SET enabled = FALSE WHERE id = $1",
                     tenant["id"]
                 )
                 logger.warning(f"Tenant {tenant['id']} disabled (license expired, grace period over)")
+
+                # Raise platform alarm (critical)
+                await self._raise_platform_alarm(
+                    tenant["id"],
+                    "critical",
+                    "Tenant Disabled - License Expired",
+                    f"Tenant {tenant['name']} disabled. License expired and grace period ended. Metrics ingestion blocked."
+                )
+
+    async def _raise_platform_alarm(
+        self,
+        tenant_id: str,
+        severity: str,
+        title: str,
+        message: str
+    ):
+        """Raise a platform-level alarm for licensing issues"""
+        import hashlib
+
+        # Generate fingerprint for deduplication
+        fingerprint = hashlib.sha256(
+            f"platform:license:{tenant_id}:{title}".encode()
+        ).hexdigest()
+
+        # Check if alert already exists and is unresolved
+        existing = await timescale.fetch_one(
+            """
+            SELECT id FROM alerts
+            WHERE fingerprint = $1
+            AND resolved_at IS NULL
+            AND triggered_at > NOW() - INTERVAL '24 hours'
+            """,
+            fingerprint
+        )
+
+        if existing:
+            # Alert already exists, skip
+            return
+
+        # Create platform alert
+        await timescale.execute_query(
+            """
+            INSERT INTO alerts (
+                rule_id, rule_name, tenant_id, host, severity, message,
+                triggered_at, fingerprint
+            )
+            VALUES (NULL, $1, $2, 'platform', $3, $4, NOW(), $5)
+            """,
+            title,
+            tenant_id,
+            severity,
+            message,
+            fingerprint
+        )
+
+        logger.info(f"Platform alarm raised: {title} for tenant {tenant_id}")
 
 
 # Global instance

@@ -24,9 +24,7 @@ async def zabbix_webhook(
 
     # Verify HMAC if signature provided
     if x_webhook_signature:
-        try:
-            verify_webhook_hmac(x_webhook_signature, body, settings.api_secret_key)
-        except Exception:
+        if not verify_webhook_hmac(x_webhook_signature, body, settings.api_secret_key):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid webhook signature"

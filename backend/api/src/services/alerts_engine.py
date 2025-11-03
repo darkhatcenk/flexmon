@@ -60,6 +60,8 @@ class AlertsEngine:
             await self._evaluate_anomaly(rule)
         elif rule_type == "absence":
             await self._evaluate_absence(rule)
+        elif rule_type == "es_query":
+            await self._evaluate_es_query(rule)
 
     async def _evaluate_threshold(self, rule: Dict):
         """Evaluate threshold-based rule"""
@@ -113,14 +115,126 @@ class AlertsEngine:
                 await self._fire_alert(rule, result["tenant_id"], result["host"], value)
 
     async def _evaluate_ratio(self, rule: Dict):
-        """Evaluate ratio-based rule"""
-        # TODO: Implement ratio evaluation
-        pass
+        """
+        Evaluate ratio-based rule
+        Example: error_rate = errors / total_requests
+        """
+        config = rule.get("config", {})
+        numerator_metric = config.get("numerator_metric")
+        denominator_metric = config.get("denominator_metric")
+        threshold = rule.get("threshold", 0.05)  # Default 5%
+        duration = timedelta(minutes=rule["duration_minutes"])
+
+        if not numerator_metric or not denominator_metric:
+            logger.warning(f"Ratio rule {rule['id']} missing metrics configuration")
+            return
+
+        # Query both metrics
+        query = """
+            SELECT tenant_id, host,
+                   SUM(CASE WHEN metric = $1 THEN value ELSE 0 END) as numerator,
+                   SUM(CASE WHEN metric = $2 THEN value ELSE 0 END) as denominator
+            FROM (
+                SELECT tenant_id, host, '{0}' as metric, COUNT(*) as value
+                FROM metrics_process
+                WHERE timestamp > NOW() - $3
+                  AND status = 'error'
+                  AND tenant_id = COALESCE($4, tenant_id)
+                GROUP BY tenant_id, host
+                UNION ALL
+                SELECT tenant_id, host, '{1}' as metric, COUNT(*) as value
+                FROM metrics_process
+                WHERE timestamp > NOW() - $3
+                  AND tenant_id = COALESCE($4, tenant_id)
+                GROUP BY tenant_id, host
+            ) combined
+            GROUP BY tenant_id, host
+        """.format(numerator_metric, denominator_metric)
+
+        results = await timescale.fetch_all(
+            query,
+            numerator_metric,
+            denominator_metric,
+            duration,
+            rule.get("tenant_id")
+        )
+
+        for result in results:
+            numerator = result.get("numerator", 0)
+            denominator = result.get("denominator", 1)
+
+            if denominator > 0:
+                ratio = numerator / denominator
+                if ratio > threshold:
+                    await self._fire_alert(
+                        rule,
+                        result["tenant_id"],
+                        result["host"],
+                        ratio,
+                        f"{rule['name']}: ratio {ratio:.2%} exceeds {threshold:.2%}"
+                    )
 
     async def _evaluate_anomaly(self, rule: Dict):
-        """Evaluate anomaly detection rule"""
-        # TODO: Implement anomaly detection
-        pass
+        """
+        Evaluate anomaly detection rule (network spike detection)
+        Detects when current value is N times higher than baseline
+        """
+        config = rule.get("config", {})
+        metric = rule.get("metric", "network_bytes_sent")
+        multiplier = config.get("multiplier", 3.0)  # Default 3x baseline
+        baseline_minutes = config.get("baseline_minutes", 60)
+        duration = timedelta(minutes=rule["duration_minutes"])
+
+        # Table mapping for network metrics
+        if "network" in metric:
+            table = "metrics_network"
+            column = metric.replace("network_", "")
+        else:
+            return
+
+        # Get baseline (average over longer period)
+        baseline_query = f"""
+            SELECT tenant_id, host, interface, AVG({column}) as baseline_avg
+            FROM {table}
+            WHERE timestamp BETWEEN NOW() - INTERVAL '{baseline_minutes} minutes'
+                                AND NOW() - INTERVAL '{rule["duration_minutes"]} minutes'
+              AND tenant_id = COALESCE($1, tenant_id)
+            GROUP BY tenant_id, host, interface
+        """
+
+        baselines = await timescale.fetch_all(baseline_query, rule.get("tenant_id"))
+        baseline_map = {}
+        for b in baselines:
+            key = f"{b['tenant_id']}:{b['host']}:{b['interface']}"
+            baseline_map[key] = b["baseline_avg"]
+
+        # Get current values
+        current_query = f"""
+            SELECT tenant_id, host, interface, AVG({column}) as current_avg
+            FROM {table}
+            WHERE timestamp > NOW() - $1
+              AND tenant_id = COALESCE($2, tenant_id)
+            GROUP BY tenant_id, host, interface
+        """
+
+        current_values = await timescale.fetch_all(
+            current_query,
+            duration,
+            rule.get("tenant_id")
+        )
+
+        for curr in current_values:
+            key = f"{curr['tenant_id']}:{curr['host']}:{curr['interface']}"
+            baseline = baseline_map.get(key, 0)
+
+            if baseline > 0 and curr["current_avg"] > (baseline * multiplier):
+                await self._fire_alert(
+                    rule,
+                    curr["tenant_id"],
+                    curr["host"],
+                    curr["current_avg"],
+                    f"{rule['name']}: {metric} spike detected ({curr['current_avg']:.0f} vs baseline {baseline:.0f})"
+                )
 
     async def _evaluate_absence(self, rule: Dict):
         """Evaluate absence rule (node down)"""
@@ -143,6 +257,91 @@ class AlertsEngine:
                 None,
                 "Node not responding"
             )
+
+    async def _evaluate_es_query(self, rule: Dict):
+        """
+        Evaluate Elasticsearch query-based rule
+        Searches logs for specific patterns (e.g., error count threshold)
+        """
+        from . import elastic
+
+        config = rule.get("config", {})
+        es_query = config.get("query")
+        threshold = rule.get("threshold", 10)
+        duration = timedelta(minutes=rule["duration_minutes"])
+
+        if not es_query:
+            logger.warning(f"ES query rule {rule['id']} missing query configuration")
+            return
+
+        # Build time-based query
+        search_body = {
+            "query": {
+                "bool": {
+                    "must": [
+                        es_query,
+                        {
+                            "range": {
+                                "@timestamp": {
+                                    "gte": f"now-{rule['duration_minutes']}m",
+                                    "lte": "now"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "size": 0,
+            "aggs": {
+                "by_host": {
+                    "terms": {
+                        "field": "host.keyword",
+                        "size": 100
+                    },
+                    "aggs": {
+                        "by_tenant": {
+                            "terms": {
+                                "field": "tenant_id.keyword",
+                                "size": 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        try:
+            # Query Elasticsearch
+            response = await elastic.search(
+                index="logs-*",
+                body=search_body
+            )
+
+            # Process aggregation results
+            buckets = response.get("aggregations", {}).get("by_host", {}).get("buckets", [])
+
+            for bucket in buckets:
+                host = bucket["key"]
+                count = bucket["doc_count"]
+                tenant_buckets = bucket.get("by_tenant", {}).get("buckets", [])
+
+                if tenant_buckets:
+                    tenant_id = tenant_buckets[0]["key"]
+                else:
+                    tenant_id = rule.get("tenant_id", "unknown")
+
+                # Check threshold
+                if count >= threshold:
+                    await self._fire_alert(
+                        rule,
+                        tenant_id,
+                        host,
+                        count,
+                        f"{rule['name']}: {count} log matches in {rule['duration_minutes']}m"
+                    )
+
+        except Exception as e:
+            logger.error(f"ES query rule {rule['id']} execution error: {e}")
 
     async def _fire_alert(
         self,
