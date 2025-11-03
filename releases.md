@@ -256,3 +256,28 @@ SECURITY ERROR ... github.com/shirou/gopsutil/v3 checksum mismatch
 - agent/Dockerfile: Multi-stage build with GOPROXY, clean modcache, module verification
 
 **Benefit**: Agent builds are now deterministic, secure, and resilient to upstream module cache flakiness. The explicit version pinning prevents unexpected changes, and the hardened build process ensures reproducible builds.
+
+## 2025-11-03 - Infrastructure Automation - Git Auto-Commit and Push
+
+**Summary**: Added automatic git commit and push functionality to build and install scripts for continuous deployment automation.
+
+**Changes**:
+- **infra/install.sh**: Appended git auto-commit section that commits and pushes changes after successful installation
+- **infra/build.sh**: Appended git auto-commit section that commits and pushes changes after successful build
+
+**Features**:
+- Automatically detects git repository (checks for `../.git` directory)
+- Uses current branch dynamically via `git branch --show-current` for flexible branch support
+- Commits all changes with timestamp: `"Automated build/update YYYY-MM-DD HH:MM:SS"`
+- Performs `git pull --rebase` before push to handle concurrent changes
+- Gracefully handles errors (continues even if commit/push fails)
+- Provides clear console output with color-coded status messages
+- Idempotent: Section marked with `# Git Auto Commit & Push` comment
+
+**Behavior**:
+- After `make install` or `make build`, changes are automatically staged, committed, and pushed
+- If no git repository exists, silently skips git operations
+- If no changes to commit, displays "No changes to commit" and continues
+- If push fails, displays "Failed to push to remote" but doesn't stop execution
+
+**Benefit**: Enables continuous deployment workflows where infrastructure changes are automatically versioned and pushed to remote repository, maintaining a complete audit trail of all builds and installations.
