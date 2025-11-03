@@ -167,3 +167,64 @@ All notable changes to this project will be documented in this file.
 - Created gateway/docker-compose.yml for standalone deployment
 - Updated infra/docker-compose.yml with enhanced gateway service (optional, profile: gateway)
 - All P3.5 regional gateway requirements complete and production-ready
+
+## 2025-11-03 - P5 Frontend UI - Resume & Complete
+
+**Summary**: Completed comprehensive frontend UI implementation with all required pages, Elasticsearch integration, RBAC user management, AI alarm explanations, and multi-channel notifications.
+
+**Core Libraries Created**:
+- `frontend/src/lib/es.ts`: Elasticsearch search integration with KQL-like query parsing, backend passthrough to /es/search endpoint
+
+**Pages Created**:
+- `frontend/src/pages/Reports.tsx`: Monthly summary reports with per-tenant resource usage (CPU/Memory/Network/Disk), alarm counts, ApexCharts visualizations, date picker, tenant selector
+- `frontend/src/pages/Discover.tsx`: Agent discovery and license management, bind/unbind license functionality, per-agent configuration for ignore_logs and ignore_alerts toggles
+- `frontend/src/pages/PlatformLogs.tsx`: Platform audit trail logs from platform-logs-* index, filters for query/user/action/timerange, paginated table view
+- `frontend/src/pages/ServerDetail.tsx`: (Previously created) Server detail view with 1-week time series charts (CPU/Memory/Network/Disk), running processes table, recent alarms
+
+**Pages Updated**:
+- `frontend/src/pages/Logs.tsx`: Complete ES passthrough implementation with KQL-like query syntax (field:value AND field2:value), tenant/host/severity/timerange filters, expandable JSON rows on click, pagination (100 logs per page), 30s auto-refresh
+- `frontend/src/pages/Users.tsx`: RBAC user management with platform_admin filtering (HIDDEN), create user modal with role restrictions (tenant_admin, tenant_reporter only), enable/disable toggle, delete functionality, tenant_id assignment
+- `frontend/src/pages/Alarms.tsx`: Unified internal/external alerts view, filters by tenant/severity/status/timerange, acknowledge/resolve actions, AI explanation button calling /v1/ai/explain/alert/{alert_id}, modal display for AI-generated explanations from Ollama at ai.cloudflex.tr, pagination (50 alarms per page)
+- `frontend/src/pages/Servers.tsx`: Paginated server list (20 per page) with real-time metrics (CPU%, Memory%), search by hostname/IP/OS, status filter, clickable rows navigating to ServerDetail page, color-coded usage indicators
+- `frontend/src/pages/Settings.tsx`: Complete tabbed interface (security, notifications, backup, ai):
+  - Security tab: TLS/mTLS toggles, certificate upload (.pem/.crt/.key)
+  - Notifications tab: 5 channel configurations (Email/SMTP with host/port/credentials, Slack webhook, Microsoft Teams webhook, Telegram bot_token/chat_id, WhatsApp Business API access_token/phone_number_id)
+  - Backup tab: S3 configuration with per-tenant paths (/backups/{tenant_id}/), region, credentials, enable/disable toggle
+  - AI tab: Ollama configuration for ai.cloudflex.tr (URL, token, model selection: llama2/llama3/mistral/codellama)
+
+**Routing & Navigation**:
+- `frontend/src/App.tsx`: Added routes for ServerDetail (/servers/:hostname), Reports, Discover, PlatformLogs; updated sidebar navigation with all pages
+
+**Technical Patterns**:
+- TanStack Query v5 with useQuery (30s-60s refetch intervals), useMutation (invalidateQueries on success)
+- ApexCharts for pie charts (top-10 resources) and line charts (time series data)
+- ES integration via lib/es.ts with KQL-like query parsing
+- Pagination with page state management across all list views
+- Modal dialogs with fixed overlay positioning
+- Form handling with FormData API
+- Color-coded severity/status badges throughout
+- Inline styles with consistent color scheme (blue=#007bff, green=#28a745, red=#dc3545, yellow=#ffc107)
+
+**RBAC Implementation**:
+- Users page filters out platform_admin role from display and creation
+- Create user modal restricts role selection to tenant_admin and tenant_reporter only
+- Tenant ID field for per-tenant access restriction
+
+**AI Integration**:
+- AI alarm explanation feature calling /v1/ai/explain/alert/{alert_id}
+- Settings page configuration for Ollama AI service at ai.cloudflex.tr
+- Model selection dropdown (llama2, llama3, mistral, codellama)
+- Token-based authentication for AI service
+
+**Multi-Channel Notifications**:
+- Email/SMTP: host, port, from_address, username, password
+- Slack: webhook URL
+- Microsoft Teams: webhook URL
+- Telegram: bot_token, chat_id
+- WhatsApp Business API: access_token, phone_number_id
+
+**Files Modified**: 10 files
+**Files Created**: 5 files
+**Total Frontend Components**: 10 pages + 2 core libraries (api.ts, es.ts)
+
+All P5 requirements complete and ready for integration testing.
