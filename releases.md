@@ -130,3 +130,20 @@ All notable changes to this project will be documented in this file.
 - Verified all routers complete with working logic: users, auth, discovery, ai_explain, alerts_rules, metrics_ingest, alerts_webhooks
 - Verified notifications.py has complete multi-channel support (Email/SMTP, Slack, Teams, Telegram, WhatsApp)
 - All P2 backend core requirements complete and functional
+
+### 2025-11-03 02:00 UTC — Agent comprehensive enhancement (P3)
+- Complete rewrite of Go agent with all P3 requirements
+- Cross-platform support: Windows, Linux, macOS (single binary for each)
+- Extended metrics collection: cpu, memory, disk, network, processes (top 10), USB devices, hostinfo
+- Demo value fallback when OS APIs unavailable for continuous operation
+- Interval validation: configurable 10-300s (default 30s) with server-side override via pull-config endpoint
+- Fingerprinting: hostname + machine_uuid + primary_mac + primary_ip for unique identification
+- XMPP publishing to metrics.<tenant_id>.<hostname> with automatic HTTP fallback
+- Elasticsearch log sending to per-tenant daily indices (logs-<tenant>-YYYY.MM.DD)
+- Exponential backoff up to 300s on network failures (1s→2s→4s...→max 300s)
+- Server-side config override support: collection_interval_sec, ignore_logs, ignore_alerts
+- Agent auto-registration on startup with fingerprint submission
+- Updated go.mod with XMPP dependency (gosrc.io/xmpp v0.5.1)
+- Created comprehensive BUILD.md with cross-platform build instructions
+- Systemd, Windows Service, and macOS LaunchAgent configuration examples
+- All P3 agent requirements complete and production-ready
