@@ -62,6 +62,52 @@ async def create_alert_rule(
     return AlertRule(**created)
 
 
+@router.post("/alerts/rules/batch", status_code=status.HTTP_201_CREATED)
+async def create_alert_rules_batch(
+    rules_data: dict,
+    tenant_id: str = Depends(get_tenant_id_optional)
+):
+    """
+    Create multiple alert rules from batch (for seeding)
+    No authentication required for initial seeding
+    """
+    rules = rules_data.get("rules", [])
+    created_count = 0
+
+    query = """
+        INSERT INTO alert_rules (name, description, type, metric, condition, threshold, duration_minutes, severity, enabled, tenant_id, tags)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (name, tenant_id) DO NOTHING
+    """
+
+    for rule in rules:
+        try:
+            await timescale.execute_query(
+                query,
+                rule.get("name"),
+                rule.get("description"),
+                rule.get("type"),
+                rule.get("metric"),
+                rule.get("condition"),
+                rule.get("threshold"),
+                rule.get("duration_minutes", 5),
+                rule.get("severity", "warning"),
+                rule.get("enabled", True),
+                rule.get("tenant_id"),
+                rule.get("tags", [])
+            )
+            created_count += 1
+        except Exception as e:
+            # Skip rules that fail (e.g., duplicates)
+            continue
+
+    return {
+        "message": f"Created {created_count} alert rules",
+        "total": len(rules),
+        "created": created_count
+    }
+
+
 @router.get("/alerts/rules/{rule_id}", response_model=AlertRule)
 async def get_alert_rule(
     rule_id: int,

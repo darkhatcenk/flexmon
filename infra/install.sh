@@ -148,11 +148,19 @@ done
 
 echo ""
 echo "=========================================="
-echo "Loading Elasticsearch templates and ILM..."
+echo "Verifying Elasticsearch templates and ILM..."
 echo "=========================================="
 
-# This will be done by the API service on startup
+# ES templates are loaded by the API service on startup via elastic.load_templates_and_ilm()
+# Verify they were loaded successfully
 sleep 5
+
+ES_PASSWORD=$(cat secrets/elastic_password.txt)
+if curl -sf -u elastic:$ES_PASSWORD http://localhost:9200/_index_template/logs > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Elasticsearch templates loaded${NC}"
+else
+    echo -e "${YELLOW}⚠ ES templates not yet loaded, will retry on API startup${NC}"
+fi
 
 echo ""
 echo "=========================================="
@@ -192,12 +200,11 @@ echo "=========================================="
 # Wait a moment for API to be fully ready
 sleep 5
 
-# Load default rules (if API endpoint is ready)
-if curl -sf http://localhost:8000/v1/health > /dev/null 2>&1; then
-    echo -e "${YELLOW}Default rules will be loaded on first API request${NC}"
-else
-    echo -e "${YELLOW}⚠ API not ready yet, rules will be loaded later${NC}"
-fi
+# Note: Default rules can be loaded via API or manually seeded
+# For now, rules are available and can be loaded with: make seed
+echo -e "${YELLOW}ℹ Default alert rules available in seed/alerts/default_rules.yaml${NC}"
+echo -e "${YELLOW}ℹ Load them with: make seed${NC}"
+echo -e "${YELLOW}ℹ Load demo data with: make demo${NC}"
 
 echo ""
 echo "=========================================="

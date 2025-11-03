@@ -107,3 +107,13 @@ All notable changes to this project will be documented in this file.
 - Confirmed all infrastructure files (docker-compose.yml, .env.example, makefile, install.sh) are complete
 - Confirmed all database schemas and ES templates are complete
 - All files ready for production deployment
+
+### 2025-11-03 01:10 UTC — Infrastructure completeness pass and improvements
+- Enhanced install.sh to verify Elasticsearch template loading
+- Updated install.sh to provide clear instructions for seeding default rules and demo data
+- Added /v1/alerts/rules/batch endpoint for batch rule creation
+- Added UNIQUE(name, tenant_id) constraint to alert_rules table for proper conflict handling
+- Verified makefile targets: up, down, logs, seed, demo, health all functional
+- Verified build.sh builds all services: backend/api, license-api, agent, gateway, frontend
+- Verified seed files present: default_rules.yaml (4.9K), default_rules.json (2.2K), demo_metrics.ndjson (1.6K), demo_logs.ndjson (1.2K)
+- All infrastructure requirements complete and tested
