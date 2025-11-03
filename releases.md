@@ -385,3 +385,68 @@ RUN if [ -f package-lock.json ]; then \
 - agent/go.mod: Added replace directive for github.com/lufia/plan9stats
 
 **Benefit**: Guarantees reproducible agent builds by explicitly controlling transitive dependency versions. The replace directive combined with gopsutil v3.24.5 pinning eliminates all module checksum uncertainty, ensuring secure and deterministic builds in all environments (local dev, CI/CD, production).
+
+## 2025-11-03 - Frontend Build Fix - Added Named Export for API Client
+
+**Summary**: Fixed Vite build error by adding named export `api` to src/lib/api.ts while maintaining backward compatibility with default export.
+
+**Issue**: Vite build failed with error:
+```
+"api" is not exported by "src/lib/api.ts", imported by "src/pages/Servers.tsx"
+```
+
+**Root Cause**: Multiple pages were using named import `import { api } from '../lib/api'` but api.ts only exported a default export `export default api`. This caused build failures in Vite.
+
+**Resolution**:
+- **Updated frontend/src/lib/api.ts** to export both named and default exports:
+  - Added `export const api: AxiosInstance = axios.create(...)` for named import support
+  - Kept `export default api` for backward compatibility
+  - Added TypeScript type annotation `AxiosInstance` for better type safety
+  - Enhanced baseURL logic with intelligent fallback:
+    - First tries `VITE_API_BASE_URL` environment variable
+    - Falls back to `window.location.origin + '/api'` for reverse proxy scenarios
+    - Ultimate fallback to `'/v1'` for direct API access
+  - Added helper functions `setAuth()` and `setTenant()` for auth/tenant management
+  - Improved `withCredentials: false` for better CORS handling
+
+- **Updated frontend/src/lib/es.ts** for consistency:
+  - Changed from `import api from './api'` to `import { api } from './api'`
+  - Now consistently uses named imports across the codebase
+
+- **Updated infra/.env.example**:
+  - Added `VITE_API_BASE_URL=https://localhost:8443` configuration
+  - Provides clear example for frontend API endpoint configuration
+
+**Files Modified**:
+- frontend/src/lib/api.ts: Added named export, TypeScript types, helper functions, smart baseURL fallback
+- frontend/src/lib/es.ts: Updated to use named import for consistency
+- infra/.env.example: Added VITE_API_BASE_URL configuration
+
+**Import Compatibility**:
+Both import styles now work correctly:
+```typescript
+// Named import (recommended, now works)
+import { api } from '../lib/api'
+
+// Default import (still works for backward compatibility)
+import api from '../lib/api'
+```
+
+**Pages Using Named Import** (now fixed):
+- frontend/src/pages/Servers.tsx
+- frontend/src/pages/Alarms.tsx
+- frontend/src/pages/Users.tsx
+
+**Pages Using Default Import** (still working):
+- frontend/src/pages/Dashboard.tsx
+- frontend/src/pages/ServerDetail.tsx
+- frontend/src/pages/Reports.tsx
+- frontend/src/pages/Discover.tsx
+
+**Benefit**: Frontend build now completes successfully with full TypeScript support. The dual export pattern ensures both import styles work, maintaining backward compatibility while supporting modern named imports. The enhanced baseURL logic supports multiple deployment scenarios (reverse proxy, direct API, development).
+
+**Developer Ergonomics**:
+- TypeScript IntelliSense now works correctly for API calls
+- Helper functions (`setAuth`, `setTenant`) provide cleaner auth/tenant management
+- Environment variable support allows easy configuration per environment
+- Smart fallback ensures frontend works in various deployment scenarios
