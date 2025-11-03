@@ -281,3 +281,37 @@ SECURITY ERROR ... github.com/shirou/gopsutil/v3 checksum mismatch
 - If push fails, displays "Failed to push to remote" but doesn't stop execution
 
 **Benefit**: Enables continuous deployment workflows where infrastructure changes are automatically versioned and pushed to remote repository, maintaining a complete audit trail of all builds and installations.
+
+## 2025-11-03 - Frontend Build Fix - npm ci Fallback Support
+
+**Summary**: Fixed frontend Docker build to support both npm ci and npm install, eliminating the "npm ci can only install with an existing package-lock.json" error.
+
+**Issue**: Frontend build failed when package-lock.json was not present in the repository, causing Docker build to fail with:
+```
+npm ci can only install with an existing package-lock.json
+```
+
+**Resolution**:
+- **Updated frontend/Dockerfile builder stage** with intelligent dependency installation:
+  - Copy package files with wildcard: `COPY package*.json ./`
+  - Added conditional install logic that checks for package-lock.json existence
+  - Uses `npm ci --no-audit --no-fund` if lock file exists (fast, deterministic)
+  - Falls back to `npm install --no-audit --no-fund` if no lock file (flexible, generates lock)
+  - Preserved multi-stage build with nginx production image
+  - Build output correctly copied from `/app/dist` to `/usr/share/nginx/html`
+
+**Implementation**:
+```dockerfile
+RUN if [ -f package-lock.json ]; then \
+      echo "Found package-lock.json, using npm ci..."; \
+      npm ci --no-audit --no-fund; \
+    else \
+      echo "No package-lock.json found, using npm install..."; \
+      npm install --no-audit --no-fund; \
+    fi
+```
+
+**Files Modified**:
+- frontend/Dockerfile: Added npm ci/install conditional fallback logic
+
+**Benefit**: Frontend Docker builds now work reliably in both scenarios - with or without a committed package-lock.json file. This supports flexible development workflows while maintaining deterministic builds when a lock file is present. The `--no-audit --no-fund` flags speed up installation by skipping unnecessary audit and funding messages.
