@@ -1,0 +1,217 @@
+# FlexMON Default Alert Rules
+# These rules are loaded during installation
+
+rules:
+  - name: "High CPU Usage"
+    description: "CPU usage exceeds 85% for 5 minutes"
+    type: "threshold"
+    metric: "cpu_percent"
+    condition: ">"
+    threshold: 85
+    duration_minutes: 5
+    severity: "warning"
+    enabled: true
+    tags:
+      - "cpu"
+      - "performance"
+
+  - name: "Critical CPU Usage"
+    description: "CPU usage exceeds 95% for 2 minutes"
+    type: "threshold"
+    metric: "cpu_percent"
+    condition: ">"
+    threshold: 95
+    duration_minutes: 2
+    severity: "critical"
+    enabled: true
+    tags:
+      - "cpu"
+      - "performance"
+
+  - name: "High Memory Usage"
+    description: "Memory usage exceeds 90%"
+    type: "threshold"
+    metric: "memory_percent"
+    condition: ">"
+    threshold: 90
+    duration_minutes: 5
+    severity: "warning"
+    enabled: true
+    tags:
+      - "memory"
+      - "performance"
+
+  - name: "Critical Memory Usage"
+    description: "Memory usage exceeds 95%"
+    type: "threshold"
+    metric: "memory_percent"
+    condition: ">"
+    threshold: 95
+    duration_minutes: 2
+    severity: "critical"
+    enabled: true
+    tags:
+      - "memory"
+      - "performance"
+
+  - name: "High Disk Usage"
+    description: "Disk usage exceeds 90%"
+    type: "threshold"
+    metric: "disk_percent"
+    condition: ">"
+    threshold: 90
+    duration_minutes: 10
+    severity: "warning"
+    enabled: true
+    tags:
+      - "disk"
+      - "storage"
+
+  - name: "Critical Disk Usage"
+    description: "Disk usage exceeds 95%"
+    type: "threshold"
+    metric: "disk_percent"
+    condition: ">"
+    threshold: 95
+    duration_minutes: 5
+    severity: "critical"
+    enabled: true
+    tags:
+      - "disk"
+      - "storage"
+
+  - name: "Node Down"
+    description: "No metrics received for 5 minutes"
+    type: "absence"
+    metric: "heartbeat"
+    duration_minutes: 5
+    severity: "critical"
+    enabled: true
+    tags:
+      - "availability"
+      - "node"
+
+  - name: "Elasticsearch Ingest Error"
+    description: "Elasticsearch log ingest failures"
+    type: "log_query"
+    query: 'level:ERROR AND service:elasticsearch AND message:"ingest failed"'
+    count_threshold: 10
+    duration_minutes: 5
+    severity: "error"
+    enabled: true
+    tags:
+      - "elasticsearch"
+      - "logs"
+
+  - name: "Process Error Rate"
+    description: "High error rate in application processes"
+    type: "ratio"
+    numerator_metric: "process_errors"
+    denominator_metric: "process_total"
+    threshold: 0.05  # 5%
+    duration_minutes: 10
+    severity: "warning"
+    enabled: true
+    tags:
+      - "application"
+      - "errors"
+
+  - name: "Network Spike Detection"
+    description: "Network traffic spike detected (3x average)"
+    type: "anomaly"
+    metric: "network_bytes_sent"
+    algorithm: "spike"
+    multiplier: 3.0
+    baseline_minutes: 60
+    duration_minutes: 5
+    severity: "warning"
+    enabled: true
+    tags:
+      - "network"
+      - "anomaly"
+
+  - name: "High Network Error Rate"
+    description: "Network errors exceed 1%"
+    type: "ratio"
+    numerator_metric: "network_errors"
+    denominator_metric: "network_packets"
+    threshold: 0.01  # 1%
+    duration_minutes: 10
+    severity: "warning"
+    enabled: true
+    tags:
+      - "network"
+      - "errors"
+
+  - name: "Disk I/O Bottleneck"
+    description: "Disk I/O wait time exceeds 30%"
+    type: "threshold"
+    metric: "disk_io_wait_percent"
+    condition: ">"
+    threshold: 30
+    duration_minutes: 10
+    severity: "warning"
+    enabled: true
+    tags:
+      - "disk"
+      - "performance"
+      - "io"
+
+  - name: "Service Restart Detected"
+    description: "Service restart detected via process uptime"
+    type: "log_query"
+    query: 'message:"process started" OR message:"service restarted"'
+    count_threshold: 1
+    duration_minutes: 5
+    severity: "info"
+    enabled: true
+    tags:
+      - "service"
+      - "restart"
+
+  - name: "SSL Certificate Expiring Soon"
+    description: "SSL certificate expires in 30 days"
+    type: "threshold"
+    metric: "ssl_cert_days_remaining"
+    condition: "<"
+    threshold: 30
+    duration_minutes: 60
+    severity: "warning"
+    enabled: true
+    tags:
+      - "ssl"
+      - "security"
+
+  - name: "Failed Login Attempts"
+    description: "Multiple failed login attempts detected"
+    type: "log_query"
+    query: 'level:WARNING AND message:"failed login"'
+    count_threshold: 5
+    duration_minutes: 10
+    severity: "warning"
+    enabled: true
+    tags:
+      - "security"
+      - "authentication"
+
+# Notification routing defaults
+routing:
+  default_channels:
+    critical:
+      - "slack"
+      - "email"
+    error:
+      - "slack"
+      - "email"
+    warning:
+      - "email"
+    info:
+      - "email"
+
+  quiet_hours:
+    enabled: false
+    start_hour: 22  # 10 PM
+    end_hour: 8     # 8 AM
+    timezone: "UTC"
+    severity_override:  # Still send these during quiet hours
+      - "critical"
