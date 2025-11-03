@@ -228,3 +228,31 @@ All notable changes to this project will be documented in this file.
 **Total Frontend Components**: 10 pages + 2 core libraries (api.ts, es.ts)
 
 All P5 requirements complete and ready for integration testing.
+
+## 2025-11-03 - Agent Build Fix - Module Checksum Security
+
+**Summary**: Fixed Go module checksum mismatch error for gopsutil/v3 that was causing agent image builds to fail with "SECURITY ERROR".
+
+**Issue**: During agent Docker image builds, Go reported:
+```
+SECURITY ERROR ... github.com/shirou/gopsutil/v3 checksum mismatch
+```
+
+**Resolution**:
+- **Pinned gopsutil to stable version**: Updated agent/go.mod to explicitly require `github.com/shirou/gopsutil/v3 v3.24.5` (previously v3.23.10)
+- **Updated checksums**: Regenerated agent/go.sum with verified checksums from Go proxy for v3.24.5 and updated golang.org/x/sys to v0.20.0 for compatibility
+- **Hardened Dockerfile build**:
+  - Added `syntax=docker/dockerfile:1` for BuildKit features
+  - Set `GOPROXY=https://proxy.golang.org,direct` for reliable module downloads
+  - Set `GOSUMDB=sum.golang.org` for checksum verification
+  - Added `go clean -modcache` before `go mod download` to avoid stale cache
+  - Copy go.mod/go.sum first, download deps, then copy source (layer caching optimization)
+  - Added `go mod verify` step (non-blocking) to validate module integrity
+  - Added build flags `-ldflags="-w -s"` to strip debug info and reduce binary size
+
+**Files Modified**:
+- agent/go.mod: Pinned gopsutil/v3 to v3.24.5
+- agent/go.sum: Updated with verified checksums for v3.24.5 and golang.org/x/sys v0.20.0
+- agent/Dockerfile: Multi-stage build with GOPROXY, clean modcache, module verification
+
+**Benefit**: Agent builds are now deterministic, secure, and resilient to upstream module cache flakiness. The explicit version pinning prevents unexpected changes, and the hardened build process ensures reproducible builds.
