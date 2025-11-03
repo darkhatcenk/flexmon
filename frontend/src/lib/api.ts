@@ -1,8 +1,21 @@
-import axios from 'axios'
+import axios, { AxiosInstance } from 'axios'
 
-const api = axios.create({
-  baseURL: '/v1',
+// Fallback baseURL: same origin + "/api" if VITE_API_BASE_URL is not set
+const fallbackBase = ((): string => {
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin.replace(/\/$/, '')
+    return origin ? `${origin}/api` : ''
+  }
+  return ''
+})()
+
+const baseURL = import.meta.env.VITE_API_BASE_URL || fallbackBase || '/v1'
+
+// Create axios instance with named export
+export const api: AxiosInstance = axios.create({
+  baseURL,
   timeout: 30000,
+  withCredentials: false,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -32,4 +45,24 @@ api.interceptors.response.use(
   }
 )
 
+// Helper functions for auth and tenant management
+export function setAuth(token?: string) {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    localStorage.setItem('auth_token', token)
+  } else {
+    delete api.defaults.headers.common['Authorization']
+    localStorage.removeItem('auth_token')
+  }
+}
+
+export function setTenant(tenantId?: string) {
+  if (tenantId) {
+    api.defaults.headers.common['X-Tenant-Id'] = tenantId
+  } else {
+    delete api.defaults.headers.common['X-Tenant-Id']
+  }
+}
+
+// Keep default export for backward compatibility
 export default api
