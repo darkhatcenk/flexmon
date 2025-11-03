@@ -147,3 +147,23 @@ All notable changes to this project will be documented in this file.
 - Created comprehensive BUILD.md with cross-platform build instructions
 - Systemd, Windows Service, and macOS LaunchAgent configuration examples
 - All P3 agent requirements complete and production-ready
+
+### 2025-11-03 02:15 UTC — Regional gateway enhancement (P3.5)
+- Complete rewrite of FastAPI-based regional gateway with enterprise features
+- Traffic forwarding: proxy agent/poller requests to central API with full HTTP method support
+- Rate limiting: dual-level (global: 1000 req/min, per-IP: 100 req/min) with sliding window
+- HMAC signing: optional HMAC-SHA256 signing of forwarded requests with X-Gateway-Signature header
+- IP allowlist: optional IP-based access control with wildcard and exact match support
+- Retry logic: exponential backoff (1s→2s→4s) up to configurable max retries (default 3)
+- Gateway metadata headers: X-Gateway-Region, X-Forwarded-For, X-Gateway-Timestamp
+- Statistics endpoint: /stats with total, forwarded, rate_limited, blocked counters
+- Health endpoint: /health with gateway config info and status
+- Middleware-based filtering: IP allowlist and rate limit checks before proxying
+- Comprehensive logging: INFO/WARNING/ERROR levels for all operations
+- Configurable timeouts (default 30s) and retry attempts
+- Created gateway/requirements.txt with pinned FastAPI and httpx versions
+- Updated gateway/Dockerfile with health check and optimized image
+- Created comprehensive gateway/README.md with deployment examples
+- Created gateway/docker-compose.yml for standalone deployment
+- Updated infra/docker-compose.yml with enhanced gateway service (optional, profile: gateway)
+- All P3.5 regional gateway requirements complete and production-ready

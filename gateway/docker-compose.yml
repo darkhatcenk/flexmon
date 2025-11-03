@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: .
+    container_name: flexmon-gateway
+    ports:
+      - "8002:8002"
+    environment:
+      # Central API configuration
+      - CENTRAL_API_URL=${CENTRAL_API_URL:-http://api:8000}
+
+      # Gateway identification
+      - GATEWAY_REGION=${GATEWAY_REGION:-default}
+
+      # HMAC signing (optional)
+      - ENABLE_HMAC_SIGNING=${ENABLE_HMAC_SIGNING:-false}
+      - HMAC_SECRET=${HMAC_SECRET:-}
+
+      # Rate limiting
+      - RATE_LIMIT_PER_MIN=${RATE_LIMIT_PER_MIN:-1000}
+      - RATE_LIMIT_PER_IP=${RATE_LIMIT_PER_IP:-100}
+
+      # IP allowlist (optional, comma-separated)
+      - IP_ALLOWLIST=${IP_ALLOWLIST:-}
+
+      # Retry configuration
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-30}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - flexmon-network
+
+networks:
+  flexmon-network:
+    name: flexmon-network
+    external: false
