@@ -287,7 +287,8 @@ CREATE TABLE IF NOT EXISTS alert_rules (
     tags TEXT[],
     config JSONB,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(name, tenant_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_alert_rules_tenant ON alert_rules(tenant_id);

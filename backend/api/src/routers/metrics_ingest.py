@@ -23,7 +23,33 @@ async def ingest_metrics_batch(
     """
     Ingest batch of metrics in JSON Lines format
     Max size: 15 MB / 3000 records
+    Enforces license validation - blocks unlicensed tenants
     """
+    # Check tenant license status
+    tenant_check = await timescale.fetch_one(
+        """
+        SELECT enabled, license_expires_at, grace_period_until
+        FROM tenants WHERE id = $1
+        """,
+        tenant_id
+    )
+
+    if not tenant_check:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant not found"
+        )
+
+    if not tenant_check["enabled"]:
+        # Check if grace period is still valid
+        from datetime import datetime as dt
+        grace_until = tenant_check.get("grace_period_until")
+        if not grace_until or dt.utcnow() > grace_until:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="Tenant license expired. Metrics ingestion blocked."
+            )
+
     # Check content type
     if request.headers.get("content-type") != "application/x-ndjson":
         raise HTTPException(
@@ -113,6 +139,23 @@ async def ingest_metrics_batch(
     if process_metrics:
         await _insert_process_metrics(process_metrics)
         inserted_count += len(process_metrics)
+
+    # Update agent last_seen timestamp for all unique hosts
+    unique_hosts = set()
+    for metrics_list in [cpu_metrics, memory_metrics, disk_metrics, network_metrics, process_metrics]:
+        for m in metrics_list:
+            unique_hosts.add(m.get("host"))
+
+    for host in unique_hosts:
+        await timescale.execute_query(
+            """
+            UPDATE agents
+            SET last_seen = NOW()
+            WHERE tenant_id = $1 AND hostname = $2
+            """,
+            tenant_id,
+            host
+        )
 
     return {
         "message": "Metrics ingested successfully",
