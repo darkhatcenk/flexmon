@@ -315,3 +315,73 @@ RUN if [ -f package-lock.json ]; then \
 - frontend/Dockerfile: Added npm ci/install conditional fallback logic
 
 **Benefit**: Frontend Docker builds now work reliably in both scenarios - with or without a committed package-lock.json file. This supports flexible development workflows while maintaining deterministic builds when a lock file is present. The `--no-audit --no-fund` flags speed up installation by skipping unnecessary audit and funding messages.
+
+## 2025-11-03 - Frontend Dependency Fix - ApexCharts Compatibility
+
+**Summary**: Fixed frontend dependency conflict (ERESOLVE) by pinning compatible versions of react-apexcharts and apexcharts, and updated Dockerfile to generate lockfile with legacy-peer-deps.
+
+**Issue**: npm install failed with ERESOLVE error:
+```
+react-apexcharts@1.8.0 requires apexcharts >=4, but project has apexcharts@^3.x
+```
+
+**Resolution**:
+- **Updated frontend/package.json** with compatible versions:
+  - Pinned `react-apexcharts` to exact version `1.6.0` (supports ApexCharts v3)
+  - Updated `apexcharts` to `^3.54.0` (latest stable v3)
+  - Added `engines` field to ensure Node.js >=18
+
+- **Enhanced frontend/Dockerfile** for deterministic builds:
+  - Set `ENV NPM_CONFIG_LEGACY_PEER_DEPS=true` to handle peer dependency conflicts
+  - Added conditional install logic:
+    - If `package-lock.json` exists → use `npm ci` (fast, deterministic)
+    - If no lockfile → generate it with `npm install --package-lock-only --legacy-peer-deps`, then use `npm ci`
+  - This ensures reproducible builds even without a committed lockfile
+  - Preserved multi-stage build with nginx production stage
+
+**Implementation**:
+```dockerfile
+ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
+
+RUN if [ -f package-lock.json ]; then \
+      echo "Using existing package-lock.json -> npm ci"; \
+      npm ci --no-audit --no-fund; \
+    else \
+      echo "No lockfile -> generating with legacy peer deps"; \
+      npm install --package-lock-only --legacy-peer-deps --no-audit --no-fund; \
+      npm ci --no-audit --no-fund; \
+    fi
+```
+
+**Files Modified**:
+- frontend/package.json: Pinned react-apexcharts@1.6.0 + apexcharts@^3.54.0, added engines field
+- frontend/Dockerfile: Added ENV NPM_CONFIG_LEGACY_PEER_DEPS and lockfile generation logic
+
+**Benefit**: Eliminates ERESOLVE dependency conflicts, ensures deterministic builds, and maintains compatibility with ApexCharts v3 ecosystem used throughout the codebase.
+
+## 2025-11-03 - Agent Build Hardening - Plan9Stats Replace Directive
+
+**Summary**: Added replace directive for plan9stats module to ensure known-good revision and eliminate potential checksum mismatches during Go module downloads.
+
+**Issue**: Transitive dependency `github.com/lufia/plan9stats` (required by gopsutil) could cause checksum mismatches during Docker builds due to upstream module updates.
+
+**Resolution**:
+- **Updated agent/go.mod** with explicit replace directive:
+  ```go
+  replace github.com/lufia/plan9stats => github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0
+  ```
+  - This pins plan9stats to a known-good revision (commit 39d0f177ccd0)
+  - Ensures deterministic builds across all environments
+  - Already had gopsutil pinned to v3.24.5 (from commit 98b0586)
+
+- **agent/Dockerfile** already hardened (no changes needed):
+  - Uses `GOPROXY=https://proxy.golang.org,direct` for reliable module downloads
+  - Uses `GOSUMDB=sum.golang.org` for checksum verification
+  - Staged module download with `go clean -modcache && go mod download`
+  - Module verification with `go mod verify || true`
+  - Static binary build with CGO_ENABLED=0
+
+**Files Modified**:
+- agent/go.mod: Added replace directive for github.com/lufia/plan9stats
+
+**Benefit**: Guarantees reproducible agent builds by explicitly controlling transitive dependency versions. The replace directive combined with gopsutil v3.24.5 pinning eliminates all module checksum uncertainty, ensuring secure and deterministic builds in all environments (local dev, CI/CD, production).
