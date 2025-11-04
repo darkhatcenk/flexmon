@@ -74,11 +74,11 @@ services:
       context: ../backend/license-api
       dockerfile: Dockerfile
     container_name: flexmon-license-api
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-flexmon}:$$(cat /run/secrets/db_password)@timescaledb:5432/${POSTGRES_DB:-flexmon}
       - API_SECRET_KEY_FILE=/run/secrets/api_secret
     secrets:
-      - db_password
       - api_secret
     ports:
       - "8001:8001"
@@ -95,8 +95,9 @@ services:
       context: ../backend/api
       dockerfile: Dockerfile
     container_name: flexmon-api
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-flexmon}:$$(cat /run/secrets/db_password)@timescaledb:5432/${POSTGRES_DB:-flexmon}
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_USER=elastic
       - ELASTICSEARCH_PASSWORD_FILE=/run/secrets/elastic_password
@@ -104,13 +105,10 @@ services:
       - XMPP_PORT=5222
       - LICENSE_API_URL=http://license-api:8001
       - API_SECRET_KEY_FILE=/run/secrets/api_secret
-      - AI_API_URL=${AI_API_URL:-https://ai.cloudflex.tr}
       - AI_API_TOKEN_FILE=/run/secrets/ai_token
       - TLS_CERT_PATH=/app/certs/server.crt
       - TLS_KEY_PATH=/app/certs/server.key
-      - ENABLE_MTLS=${ENABLE_MTLS:-false}
     secrets:
-      - db_password
       - elastic_password
       - api_secret
       - ai_token
