@@ -49,43 +49,67 @@ else
     echo -e "${GREEN}✓ .env already exists${NC}"
 fi
 
-# Create secrets directory
+# Load .env to get directory paths
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | grep -v '^$' | xargs)
+fi
+
+# Set directory paths with defaults
+SECRETS_DIR="${SECRETS_DIR:-./secrets}"
+CERTS_DIR="${CERTS_DIR:-./certificates}"
+DATA_DIR="${DATA_DIR:-./data}"
+
+# Create all required directories
+echo ""
+echo "Setting up directories..."
+mkdir -p "${SECRETS_DIR}"
+mkdir -p "${CERTS_DIR}"
+mkdir -p "${DATA_DIR}/es"
+mkdir -p "${DATA_DIR}/pg"
+mkdir -p "${DATA_DIR}/xmpp"
+echo -e "${GREEN}✓ Directories created: ${SECRETS_DIR}, ${CERTS_DIR}, ${DATA_DIR}${NC}"
+
+# Create placeholder secret files if they don't exist (prevents bind mount errors)
 echo ""
 echo "Setting up secrets..."
-mkdir -p secrets
+touch "${SECRETS_DIR}/db_password.txt"
+touch "${SECRETS_DIR}/elastic_password.txt"
+touch "${SECRETS_DIR}/api_secret.txt"
+touch "${SECRETS_DIR}/ai_token.txt"
+echo -e "${GREEN}✓ Secret placeholder files created${NC}"
 
 # Generate database password
-if [ ! -f secrets/db_password.txt ]; then
+if [ ! -s "${SECRETS_DIR}/db_password.txt" ]; then
     echo -e "${YELLOW}Generating database password...${NC}"
-    openssl rand -base64 32 > secrets/db_password.txt
+    openssl rand -base64 32 > "${SECRETS_DIR}/db_password.txt"
     echo -e "${GREEN}✓ Database password generated${NC}"
 else
     echo -e "${GREEN}✓ Database password already exists${NC}"
 fi
 
 # Generate Elasticsearch password
-if [ ! -f secrets/elastic_password.txt ]; then
+if [ ! -s "${SECRETS_DIR}/elastic_password.txt" ]; then
     echo -e "${YELLOW}Generating Elasticsearch password...${NC}"
-    openssl rand -base64 32 > secrets/elastic_password.txt
+    openssl rand -base64 32 > "${SECRETS_DIR}/elastic_password.txt"
     echo -e "${GREEN}✓ Elasticsearch password generated${NC}"
 else
     echo -e "${GREEN}✓ Elasticsearch password already exists${NC}"
 fi
 
 # Generate API secret key
-if [ ! -f secrets/api_secret.txt ]; then
+if [ ! -s "${SECRETS_DIR}/api_secret.txt" ]; then
     echo -e "${YELLOW}Generating API secret key...${NC}"
-    openssl rand -hex 32 > secrets/api_secret.txt
+    openssl rand -hex 32 > "${SECRETS_DIR}/api_secret.txt"
     echo -e "${GREEN}✓ API secret key generated${NC}"
 else
     echo -e "${GREEN}✓ API secret key already exists${NC}"
 fi
 
 # Generate AI token (placeholder)
-if [ ! -f secrets/ai_token.txt ]; then
+if [ ! -s "${SECRETS_DIR}/ai_token.txt" ]; then
     echo -e "${YELLOW}Generating AI token placeholder...${NC}"
-    echo "your-ai-token-here" > secrets/ai_token.txt
-    echo -e "${YELLOW}⚠ Update secrets/ai_token.txt with your actual AI service token${NC}"
+    echo "your-ai-token-here" > "${SECRETS_DIR}/ai_token.txt"
+    echo -e "${YELLOW}⚠ Update ${SECRETS_DIR}/ai_token.txt with your actual AI service token${NC}"
 else
     echo -e "${GREEN}✓ AI token already exists${NC}"
 fi
@@ -93,29 +117,28 @@ fi
 # Generate TLS certificates
 echo ""
 echo "Setting up TLS certificates..."
-mkdir -p certificates
 
-if [ ! -f certificates/server.crt ]; then
+if [ ! -f "${CERTS_DIR}/server.crt" ]; then
     echo -e "${YELLOW}Generating self-signed TLS certificate...${NC}"
 
     # Generate private key
-    openssl genrsa -out certificates/server.key 4096 2>/dev/null
+    openssl genrsa -out "${CERTS_DIR}/server.key" 4096 2>/dev/null
 
     # Generate certificate signing request
-    openssl req -new -key certificates/server.key -out certificates/server.csr \
+    openssl req -new -key "${CERTS_DIR}/server.key" -out "${CERTS_DIR}/server.csr" \
         -subj "/C=TR/ST=Istanbul/L=Istanbul/O=CloudFlex/OU=FlexMON/CN=flexmon.local" 2>/dev/null
 
     # Generate self-signed certificate (valid for 365 days)
-    openssl x509 -req -days 365 -in certificates/server.csr \
-        -signkey certificates/server.key -out certificates/server.crt 2>/dev/null
+    openssl x509 -req -days 365 -in "${CERTS_DIR}/server.csr" \
+        -signkey "${CERTS_DIR}/server.key" -out "${CERTS_DIR}/server.crt" 2>/dev/null
 
     # Generate CA for mTLS (optional)
-    openssl genrsa -out certificates/ca.key 4096 2>/dev/null
-    openssl req -new -x509 -days 365 -key certificates/ca.key -out certificates/ca.crt \
+    openssl genrsa -out "${CERTS_DIR}/ca.key" 4096 2>/dev/null
+    openssl req -new -x509 -days 365 -key "${CERTS_DIR}/ca.key" -out "${CERTS_DIR}/ca.crt" \
         -subj "/C=TR/ST=Istanbul/L=Istanbul/O=CloudFlex/OU=FlexMON-CA/CN=flexmon-ca.local" 2>/dev/null
 
     # Clean up CSR
-    rm certificates/server.csr
+    rm -f "${CERTS_DIR}/server.csr"
 
     echo -e "${GREEN}✓ TLS certificates generated${NC}"
     echo -e "${YELLOW}⚠ Using self-signed certificates. Upload custom certs via UI for production.${NC}"
@@ -124,9 +147,9 @@ else
 fi
 
 # Set proper permissions
-chmod 600 secrets/*.txt
-chmod 600 certificates/*.key
-chmod 644 certificates/*.crt
+chmod 600 "${SECRETS_DIR}"/*.txt 2>/dev/null || true
+chmod 600 "${CERTS_DIR}"/*.key 2>/dev/null || true
+chmod 644 "${CERTS_DIR}"/*.crt 2>/dev/null || true
 
 echo ""
 echo "=========================================="
@@ -157,7 +180,7 @@ done
 # Wait for Elasticsearch
 echo -e "${YELLOW}Waiting for Elasticsearch...${NC}"
 for i in {1..30}; do
-    if curl -sf -u elastic:$(cat secrets/elastic_password.txt) http://localhost:9200/_cluster/health > /dev/null 2>&1; then
+    if curl -sf -u elastic:$(cat "${SECRETS_DIR}/elastic_password.txt") http://localhost:9200/_cluster/health > /dev/null 2>&1; then
         echo -e "${GREEN}✓ Elasticsearch is ready${NC}"
         break
     fi
@@ -183,7 +206,7 @@ echo "=========================================="
 # Verify they were loaded successfully
 sleep 5
 
-ES_PASSWORD=$(cat secrets/elastic_password.txt)
+ES_PASSWORD=$(cat "${SECRETS_DIR}/elastic_password.txt")
 if curl -sf -u elastic:$ES_PASSWORD http://localhost:9200/_index_template/logs > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Elasticsearch templates loaded${NC}"
 else
@@ -196,14 +219,14 @@ echo "Creating default platform admin..."
 echo "=========================================="
 
 # Generate platform admin password and save to secrets
-if [ ! -f secrets/platform_admin_pwd.txt ]; then
+if [ ! -f "${SECRETS_DIR}/platform_admin_pwd.txt" ]; then
     echo -e "${YELLOW}Generating platform admin password...${NC}"
     ADMIN_PASSWORD=$(openssl rand -base64 16)
-    echo "$ADMIN_PASSWORD" > secrets/platform_admin_pwd.txt
-    chmod 600 secrets/platform_admin_pwd.txt
+    echo "$ADMIN_PASSWORD" > "${SECRETS_DIR}/platform_admin_pwd.txt"
+    chmod 600 "${SECRETS_DIR}/platform_admin_pwd.txt"
 else
     echo -e "${GREEN}✓ Platform admin password already exists${NC}"
-    ADMIN_PASSWORD=$(cat secrets/platform_admin_pwd.txt)
+    ADMIN_PASSWORD=$(cat "${SECRETS_DIR}/platform_admin_pwd.txt")
 fi
 
 # Create admin user using manage.py CLI inside API container
@@ -290,10 +313,10 @@ mask_secret() {
 }
 
 # Read secrets from files
-DB_PASSWORD=$(cat secrets/db_password.txt 2>/dev/null || echo "not-set")
-ELASTIC_PASSWORD=$(cat secrets/elastic_password.txt 2>/dev/null || echo "not-set")
-API_SECRET=$(cat secrets/api_secret.txt 2>/dev/null || echo "not-set")
-AI_TOKEN=$(cat secrets/ai_token.txt 2>/dev/null || echo "not-set")
+DB_PASSWORD=$(cat "${SECRETS_DIR}/db_password.txt" 2>/dev/null || echo "not-set")
+ELASTIC_PASSWORD=$(cat "${SECRETS_DIR}/elastic_password.txt" 2>/dev/null || echo "not-set")
+API_SECRET=$(cat "${SECRETS_DIR}/api_secret.txt" 2>/dev/null || echo "not-set")
+AI_TOKEN=$(cat "${SECRETS_DIR}/ai_token.txt" 2>/dev/null || echo "not-set")
 
 # Mask them
 MASKED_DB_PW=$(mask_secret "$DB_PASSWORD")
@@ -335,21 +358,21 @@ cat > ../bilgi.md << EOF
 
 ## Secrets (Masked)
 
-| Secret Type          | Location                           | Masked Value        |
-|----------------------|------------------------------------|---------------------|
-| DB Password          | infra/secrets/db_password.txt      | ${MASKED_DB_PW}     |
-| Elasticsearch Pass   | infra/secrets/elastic_password.txt | ${MASKED_ES_PW}     |
-| API Secret           | infra/secrets/api_secret.txt       | ${MASKED_API_SECRET}|
-| AI Token             | infra/secrets/ai_token.txt         | ${MASKED_AI_TOKEN}  |
+| Secret Type          | Location                                      | Masked Value        |
+|----------------------|-----------------------------------------------|---------------------|
+| DB Password          | infra/${SECRETS_DIR}/db_password.txt          | ${MASKED_DB_PW}     |
+| Elasticsearch Pass   | infra/${SECRETS_DIR}/elastic_password.txt     | ${MASKED_ES_PW}     |
+| API Secret           | infra/${SECRETS_DIR}/api_secret.txt           | ${MASKED_API_SECRET}|
+| AI Token             | infra/${SECRETS_DIR}/ai_token.txt             | ${MASKED_AI_TOKEN}  |
 
 ## TLS Certificates
 
-| Certificate       | Path                              |
-|-------------------|-----------------------------------|
-| Server Cert       | infra/certificates/server.crt     |
-| Server Key        | infra/certificates/server.key     |
-| CA Cert (mTLS)    | infra/certificates/ca.crt         |
-| CA Key (mTLS)     | infra/certificates/ca.key         |
+| Certificate       | Path                                     |
+|-------------------|------------------------------------------|
+| Server Cert       | infra/${CERTS_DIR}/server.crt            |
+| Server Key        | infra/${CERTS_DIR}/server.key            |
+| CA Cert (mTLS)    | infra/${CERTS_DIR}/ca.crt                |
+| CA Key (mTLS)     | infra/${CERTS_DIR}/ca.key                |
 
 ## Admin Credentials
 
