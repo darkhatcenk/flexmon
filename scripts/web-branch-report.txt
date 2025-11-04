@@ -1,0 +1,27 @@
+================================================================================
+WEB BRANCH DISCOVERY REPORT
+================================================================================
+
+Generated: 2025-11-04 12:00:00 UTC
+Environment: Claude Code Web Workspace
+
+CURRENT BRANCH
+--------------
+Name: claude/flexmon-project-skeleton-011CUke7RUVyCAkjNHiqYusv
+HEAD: ref: refs/heads/claude/flexmon-project-skeleton-011CUke7RUVyCAkjNHiqYusv
+
+REMOTE CONFIGURATION
+--------------------
+Remote name: origin
+Remote URL: http://local_proxy@127.0.0.1:28339/git/darkhatcenk/flexmon
+Fetch spec: +refs/heads/*:refs/remotes/origin/*
+Branch tracking: claude/flexmon-project-skeleton-011CUke7RUVyCAkjNHiqYusv -> origin
+
+NOTES
+-----
+- This is a Claude Code web workspace session
+- All commits should target branch: claude/flexmon-project-skeleton-011CUke7RUVyCAkjNHiqYusv
+- Helper scripts in scripts/ directory will commit to this branch
+- Commits/push operations are handled through Claude Code's git integration
+
+================================================================================

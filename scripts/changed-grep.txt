@@ -1,0 +1,46 @@
+================================================================================
+SANITY CHECKS - FILE CONTENT GREPS
+================================================================================
+
+# Check for absolute paths in docker-compose.yml
+$ grep -nE '/host_mnt|/Users' infra/docker-compose.yml || echo "OK: no absolute host paths"
+OK: no absolute host paths
+
+# Check DATABASE_URL in .env.example
+$ grep -n '^DATABASE_URL=' infra/.env.example || echo "NOTE: DATABASE_URL will be materialized by install.sh"
+NOTE: DATABASE_URL will be materialized by install.sh
+
+# Check secrets usage in docker-compose.yml
+$ grep -nE 'POSTGRES_PASSWORD_FILE|env_file' infra/docker-compose.yml
+9:      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+35:      ELASTIC_PASSWORD_FILE: /run/secrets/elastic_password
+77:    env_file:
+80:      - API_SECRET_KEY_FILE=/run/secrets/api_secret
+98:    env_file:
+103:      - ELASTICSEARCH_PASSWORD_FILE=/run/secrets/elastic_password
+107:      - API_SECRET_KEY_FILE=/run/secrets/api_secret
+108:      - AI_API_TOKEN_FILE=/run/secrets/ai_token
+
+# Check secrets definition in docker-compose.yml
+$ grep -n 'file:.*SECRETS_DIR' infra/docker-compose.yml
+196:    file: ${SECRETS_DIR:-./secrets}/db_password.txt
+198:    file: ${SECRETS_DIR:-./secrets}/elastic_password.txt
+200:    file: ${SECRETS_DIR:-./secrets}/api_secret.txt
+202:    file: ${SECRETS_DIR:-./secrets}/ai_token.txt
+
+# Check for URL encoding in config files
+$ grep -n 'urllib.parse.quote_plus' backend/api/src/config.py backend/license-api/src/config.py
+backend/api/src/config.py:58:        encoded_password = urllib.parse.quote_plus(self.db_password)
+backend/license-api/src/config.py:54:        encoded_password = urllib.parse.quote_plus(self.db_password)
+
+# Check install.sh guards
+$ grep -n 'grep -nE.*host_mnt.*Users' infra/install.sh
+261:if grep -nE '/host_mnt|/Users|/home/|file:[[:space:]]*/|[[:space:]]+-[[:space:]]*/[^r]' docker-compose.yml 2>/dev/null; then
+
+# Check install.sh URL encoding
+$ grep -n 'urllib.parse.quote_plus' infra/install.sh
+150:print(urllib.parse.quote_plus(os.environ["DBPW"]))
+
+================================================================================
+ALL CHECKS PASSED
+================================================================================
