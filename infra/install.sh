@@ -12,11 +12,39 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Detect system architecture
+ARCH=$(uname -m)
+echo -e "${GREEN}Detected architecture: ${ARCH}${NC}"
+echo ""
+
+# Function to generate random secret
+generate_secret() {
+    openssl rand -base64 32 | tr -d '\n'
+}
+
 # Check if .env exists, if not create from example
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}Creating .env from .env.example...${NC}"
+    echo -e "${YELLOW}Creating .env from .env.example and auto-populating secrets...${NC}"
     cp .env.example .env
-    echo -e "${GREEN}✓ .env created${NC}"
+
+    # Generate secrets for __AUTO__ placeholders
+    POSTGRES_PASSWORD=$(generate_secret)
+    ES_PASSWORD=$(generate_secret)
+    XMPP_ADMIN_PASSWORD=$(generate_secret)
+    API_SECRET=$(openssl rand -hex 32 | tr -d '\n')
+    AI_TOKEN=$(generate_secret)
+
+    # Replace __AUTO__ placeholders in .env (idempotent - only if __AUTO__ exists)
+    if grep -q "__AUTO__" .env; then
+        sed -i.bak "s|POSTGRES_PASSWORD=__AUTO__|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|g" .env
+        sed -i.bak "s|ES_PASSWORD=__AUTO__|ES_PASSWORD=$ES_PASSWORD|g" .env
+        sed -i.bak "s|XMPP_ADMIN_PASSWORD=__AUTO__|XMPP_ADMIN_PASSWORD=$XMPP_ADMIN_PASSWORD|g" .env
+        sed -i.bak "s|API_SECRET=__AUTO__|API_SECRET=$API_SECRET|g" .env
+        sed -i.bak "s|AI_TOKEN=__AUTO__|AI_TOKEN=$AI_TOKEN|g" .env
+        rm -f .env.bak
+    fi
+
+    echo -e "${GREEN}✓ .env created with auto-generated secrets${NC}"
 else
     echo -e "${GREEN}✓ .env already exists${NC}"
 fi
@@ -230,6 +258,132 @@ echo "  make logs    - View service logs"
 echo "  make health  - Check service status"
 echo "  make demo    - Load demo data"
 echo "  make down    - Stop all services"
+echo ""
+
+# Generate bilgi.md with masked secrets and connection info
+echo "=========================================="
+echo "Generating bilgi.md..."
+echo "=========================================="
+
+# Function to mask secret (show first 2 and last 2 chars)
+mask_secret() {
+    local secret="$1"
+    local len=${#secret}
+    if [ $len -gt 4 ]; then
+        echo "${secret:0:2}****${secret: -2}"
+    else
+        echo "****"
+    fi
+}
+
+# Read secrets from files
+DB_PASSWORD=$(cat secrets/db_password.txt 2>/dev/null || echo "not-set")
+ELASTIC_PASSWORD=$(cat secrets/elastic_password.txt 2>/dev/null || echo "not-set")
+API_SECRET=$(cat secrets/api_secret.txt 2>/dev/null || echo "not-set")
+AI_TOKEN=$(cat secrets/ai_token.txt 2>/dev/null || echo "not-set")
+
+# Mask them
+MASKED_DB_PW=$(mask_secret "$DB_PASSWORD")
+MASKED_ES_PW=$(mask_secret "$ELASTIC_PASSWORD")
+MASKED_API_SECRET=$(mask_secret "$API_SECRET")
+MASKED_AI_TOKEN=$(mask_secret "$AI_TOKEN")
+
+# Write bilgi.md to repo root
+cat > ../bilgi.md << EOF
+# FlexMON Installation Information
+
+**Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+**Architecture:** ${ARCH}
+**Docker Compose Version:** $(docker compose version 2>/dev/null | head -1)
+
+## Service Endpoints
+
+| Service          | Host:Port           | URL                           |
+|------------------|---------------------|-------------------------------|
+| Frontend         | localhost:3000      | http://localhost:3000         |
+| API              | localhost:8000      | http://localhost:8000         |
+| API Docs         | localhost:8000      | http://localhost:8000/docs    |
+| License API      | localhost:8001      | http://localhost:8001/docs    |
+| TimescaleDB      | localhost:5432      | postgresql://flexmon@localhost:5432/flexmon |
+| Elasticsearch    | localhost:9200      | http://localhost:9200         |
+| XMPP (Prosody)   | localhost:5222      | xmpp://localhost:5222         |
+
+## Docker Images
+
+| Service          | Image                                            |
+|------------------|--------------------------------------------------|
+| TimescaleDB      | timescale/timescaledb:2.16.1-pg16 (arm64)        |
+| Elasticsearch    | docker.elastic.co/elasticsearch/elasticsearch:8.15.2 (arm64) |
+| XMPP             | prosody/prosody:0.12 (arm64)                     |
+| License API      | flexmon-license-api:latest (local build)         |
+| Backend API      | flexmon-api:latest (local build)                 |
+| Frontend         | flexmon-frontend:latest (local build)            |
+| Gateway (opt)    | flexmon-gateway:latest (local build)             |
+
+## Secrets (Masked)
+
+| Secret Type          | Location                           | Masked Value        |
+|----------------------|------------------------------------|---------------------|
+| DB Password          | infra/secrets/db_password.txt      | ${MASKED_DB_PW}     |
+| Elasticsearch Pass   | infra/secrets/elastic_password.txt | ${MASKED_ES_PW}     |
+| API Secret           | infra/secrets/api_secret.txt       | ${MASKED_API_SECRET}|
+| AI Token             | infra/secrets/ai_token.txt         | ${MASKED_AI_TOKEN}  |
+
+## TLS Certificates
+
+| Certificate       | Path                              |
+|-------------------|-----------------------------------|
+| Server Cert       | infra/certificates/server.crt     |
+| Server Key        | infra/certificates/server.key     |
+| CA Cert (mTLS)    | infra/certificates/ca.crt         |
+| CA Key (mTLS)     | infra/certificates/ca.key         |
+
+## Admin Credentials
+
+**Username:** platform_admin
+**Password:** ${MASKED_PASSWORD} (see installation logs for full password)
+
+## Configuration
+
+- **Environment File:** infra/.env
+- **Docker Compose:** infra/docker-compose.yml
+- **Volumes:** timescale_data, es_data, xmpp_data, backup_data
+
+## Quick Commands
+
+\`\`\`bash
+cd infra
+
+# View logs
+docker compose logs -f
+
+# Check service health
+docker compose ps
+
+# Restart services
+docker compose restart
+
+# Stop all services
+docker compose down
+
+# Start services
+docker compose up -d
+\`\`\`
+
+## Notes
+
+- All services are configured for **${ARCH}** architecture
+- Using Prosody XMPP server (ARM64-compatible alternative to ejabberd)
+- Elasticsearch 8.15.2 with ARM64 support
+- TimescaleDB 2.16.1 with PostgreSQL 16
+- Self-signed TLS certificates generated (replace in production)
+- Platform admin password shown during installation
+
+---
+**For full setup details, see:** [Installation Guide](./README.md)
+EOF
+
+echo -e "${GREEN}✓ bilgi.md generated in repo root${NC}"
 echo ""
 
 # Git Auto Commit & Push
