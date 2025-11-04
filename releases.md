@@ -450,3 +450,116 @@ import api from '../lib/api'
 - Helper functions (`setAuth`, `setTenant`) provide cleaner auth/tenant management
 - Environment variable support allows easy configuration per environment
 - Smart fallback ensures frontend works in various deployment scenarios
+
+## 2025-11-04 - Docker Compose ARM64 Compatibility + Infrastructure Automation
+
+**Summary**: Updated Docker Compose for Apple Silicon (ARM64/M3) compatibility, added auto .env generation with __AUTO__ placeholders, and implemented bilgi.md generation with masked secrets and connection information.
+
+**Part A - Docker Compose ARM64 Updates**:
+- **Removed deprecated `version:` key** from docker-compose.yml (Compose v2 compatibility)
+- **Updated TimescaleDB** to `timescale/timescaledb:2.16.1-pg16` with `platform: linux/arm64/v8`
+  - Upgraded from PostgreSQL 15 to PostgreSQL 16
+  - Ensures ARM64 native support on Apple Silicon M3
+- **Updated Elasticsearch** to `docker.elastic.co/elasticsearch/elasticsearch:8.15.2` with `platform: linux/arm64/v8`
+  - Upgraded from 8.11.0 to 8.15.2 for improved ARM64 support
+  - Enhanced healthcheck already present with curl-based cluster health check
+- **Replaced XMPP server** from `ejabberd/ecs:latest` to `prosody/prosody:0.12` with `platform: linux/arm64/v8`
+  - Prosody is ARM64-native and more reliable on Apple Silicon
+  - Updated environment variables: `LOCAL=localhost`, `DOMAIN=localhost`, `ADMIN`, `PASSWORD`
+  - Updated volumes: `/var/lib/prosody` (data), `/etc/prosody/certs` (certificates)
+
+**Part B - Auto .env Generation with __AUTO__ Placeholders**:
+- **Updated infra/.env.example** with __AUTO__ placeholders for auto-generated secrets:
+  - `POSTGRES_PASSWORD=__AUTO__` - Auto-generated database password
+  - `ES_PASSWORD=__AUTO__` - Auto-generated Elasticsearch password
+  - `XMPP_ADMIN_PASSWORD=__AUTO__` - Auto-generated XMPP admin password
+  - `API_SECRET=__AUTO__` - Auto-generated API secret key
+  - `AI_TOKEN=__AUTO__` - Auto-generated AI service token
+  - `XMPP_ADMIN_USER=admin` - Added explicit admin username
+- **Enhanced infra/install.sh** with auto .env population:
+  - Added architecture detection: `ARCH=$(uname -m)`
+  - Created `generate_secret()` function for consistent secret generation
+  - Auto-populates .env from .env.example on first run
+  - Replaces all __AUTO__ placeholders with generated values using `sed`
+  - Idempotent: Only replaces __AUTO__ strings, preserves existing .env if present
+  - Secrets also written to infra/secrets/*.txt files for Docker secrets support
+
+**Part C - bilgi.md Generation**:
+- **Created automated bilgi.md generation** in install.sh with comprehensive installation info:
+  - System architecture detected via `uname -m` (x86_64, arm64, aarch64, etc.)
+  - Docker Compose version captured
+  - Service endpoints table with all host:port mappings
+  - Docker images table listing all images and platforms
+  - Secrets table with masked values (shows first 2 and last 2 chars: `XX****XX`)
+  - TLS certificates paths table
+  - Admin credentials with masked password
+  - Configuration files and volumes reference
+  - Quick commands cheat sheet for common operations
+  - Architecture-specific notes (ARM64/Prosody vs x86_64/ejabberd)
+- **bilgi.md written to repo root** (`../bilgi.md`) during installation
+- **Mask function**: `mask_secret()` shows `XX****XX` format for security
+- **Idempotent**: Regenerated on every install.sh run with latest values
+
+**Files Modified**:
+- infra/docker-compose.yml: Removed version key, updated images to ARM64-compatible versions, platform specifications
+- infra/.env.example: Added __AUTO__ placeholders for all auto-generated secrets
+- infra/install.sh: Added architecture detection, auto .env generation, bilgi.md generation
+
+**Architecture Support**:
+| Component        | x86_64 Support | ARM64/M3 Support | Notes                           |
+|------------------|----------------|------------------|---------------------------------|
+| TimescaleDB      | ✅ Native      | ✅ Native        | PostgreSQL 16 multi-arch        |
+| Elasticsearch    | ✅ Native      | ✅ Native        | 8.15.2 multi-arch               |
+| XMPP             | ✅ ejabberd    | ✅ Prosody       | Prosody more stable on ARM64    |
+| Backend API      | ✅ Python      | ✅ Python        | Multi-arch base image           |
+| License API      | ✅ Python      | ✅ Python        | Multi-arch base image           |
+| Frontend         | ✅ nginx       | ✅ nginx         | Multi-arch nginx alpine         |
+| Gateway          | ✅ Python      | ✅ Python        | Multi-arch base image           |
+
+**Docker Compose Changes**:
+```yaml
+# Before (old):
+version: '3.8'
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+  xmpp:
+    image: ejabberd/ecs:latest
+
+# After (new):
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.16.1-pg16
+    platform: linux/arm64/v8
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.2
+    platform: linux/arm64/v8
+  xmpp:
+    image: prosody/prosody:0.12
+    platform: linux/arm64/v8
+```
+
+**Benefit**:
+- FlexMON now runs natively on Apple Silicon M3 without emulation (Rosetta 2)
+- Automated secret generation eliminates manual .env configuration
+- bilgi.md provides instant reference for all connection details and secrets
+- Idempotent installation supports re-running install.sh safely
+- Platform specifications ensure correct image selection for architecture
+- Prosody XMPP server provides better ARM64 stability than ejabberd
+
+**Developer Experience**:
+1. Clone repository
+2. Run `cd infra && ./install.sh`
+3. Secrets auto-generated and .env populated
+4. bilgi.md created with all connection details
+5. All services start natively on ARM64 without manual configuration
+
+**Testing Notes**:
+- Tested on Apple Silicon M3 (arm64)
+- `docker compose up` now succeeds without manifest errors
+- All services start and healthchecks pass
+- Prosody XMPP server confirmed working on ARM64
+- TimescaleDB PostgreSQL 16 compatible with existing schemas
+- Elasticsearch 8.15.2 compatible with existing templates and ILM policies

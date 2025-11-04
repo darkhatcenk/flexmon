@@ -1,9 +1,8 @@
-version: '3.8'
-
 services:
   # TimescaleDB - Time-series metrics storage
   timescaledb:
-    image: timescale/timescaledb:latest-pg15
+    image: timescale/timescaledb:2.16.1-pg16
+    platform: linux/arm64/v8
     container_name: flexmon-timescaledb
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-flexmon}
@@ -26,7 +25,8 @@ services:
 
   # Elasticsearch - Log storage and search
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.2
+    platform: linux/arm64/v8
     container_name: flexmon-elasticsearch
     environment:
       - discovery.type=single-node
@@ -48,17 +48,19 @@ services:
     networks:
       - flexmon-net
 
-  # XMPP Server - Agent messaging
+  # XMPP Server - Agent messaging (Prosody)
   xmpp:
-    image: ejabberd/ecs:latest
+    image: prosody/prosody:0.12
+    platform: linux/arm64/v8
     container_name: flexmon-xmpp
     environment:
-      - ERLANG_NODE_ARG=flexmon
-      - CTL_ON_CREATE=register admin localhost ${XMPP_ADMIN_PASSWORD:-changeme}
-      - CTL_ON_START=stats registeredusers
+      - LOCAL=localhost
+      - DOMAIN=localhost
+      - ADMIN=${XMPP_ADMIN_USER:-admin}
+      - PASSWORD=${XMPP_ADMIN_PASSWORD:-changeme}
     volumes:
-      - xmpp_data:/home/ejabberd/database
-      - ../infra/certificates:/home/ejabberd/conf/certs:ro
+      - xmpp_data:/var/lib/prosody
+      - ../infra/certificates:/etc/prosody/certs:ro
     ports:
       - "5222:5222"  # Client connections
       - "5269:5269"  # Server connections
