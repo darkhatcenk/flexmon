@@ -195,18 +195,31 @@ echo "=========================================="
 echo "Creating default platform admin..."
 echo "=========================================="
 
-# Generate platform admin password
-ADMIN_PASSWORD=$(openssl rand -base64 16)
-ADMIN_PASSWORD_HASH=$(python3 -c "from passlib.hash import bcrypt; print(bcrypt.hash('$ADMIN_PASSWORD'))")
+# Generate platform admin password and save to secrets
+if [ ! -f secrets/platform_admin_pwd.txt ]; then
+    echo -e "${YELLOW}Generating platform admin password...${NC}"
+    ADMIN_PASSWORD=$(openssl rand -base64 16)
+    echo "$ADMIN_PASSWORD" > secrets/platform_admin_pwd.txt
+    chmod 600 secrets/platform_admin_pwd.txt
+else
+    echo -e "${GREEN}✓ Platform admin password already exists${NC}"
+    ADMIN_PASSWORD=$(cat secrets/platform_admin_pwd.txt)
+fi
 
-# Insert platform admin into database
-docker exec -i flexmon-timescaledb psql -U flexmon flexmon << EOF
-INSERT INTO users (username, password_hash, role, tenant_id, created_at)
-VALUES ('platform_admin', '$ADMIN_PASSWORD_HASH', 'platform_admin', NULL, NOW())
-ON CONFLICT (username) DO NOTHING;
-EOF
+# Create admin user using manage.py CLI inside API container
+echo -e "${YELLOW}Running manage.py create-admin inside API container...${NC}"
+docker exec flexmon-api python -m src.manage create-admin \
+    --username platform_admin \
+    --password "$ADMIN_PASSWORD" \
+    --email admin@flexmon.local
 
-echo -e "${GREEN}✓ Platform admin created${NC}"
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ Platform admin created${NC}"
+else
+    echo -e "${RED}✗ Failed to create platform admin${NC}"
+    echo -e "${YELLOW}⚠ You may need to create the admin manually using:${NC}"
+    echo -e "${YELLOW}  docker exec flexmon-api python -m src.manage create-admin -u platform_admin -p <password>${NC}"
+fi
 echo ""
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${YELLOW}SAVE THESE CREDENTIALS:${NC}"

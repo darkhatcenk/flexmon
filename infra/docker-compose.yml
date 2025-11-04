@@ -50,7 +50,7 @@ services:
 
   # XMPP Server - Agent messaging (Prosody)
   xmpp:
-    image: prosody/prosody:0.12
+    image: prosodyim/prosody:0.12
     platform: linux/arm64/v8
     container_name: flexmon-xmpp
     environment:

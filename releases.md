@@ -563,3 +563,98 @@ services:
 - Prosody XMPP server confirmed working on ARM64
 - TimescaleDB PostgreSQL 16 compatible with existing schemas
 - Elasticsearch 8.15.2 compatible with existing templates and ILM policies
+
+## 2025-11-04 - Fix: Added passlib[bcrypt] and manage.py CLI for Platform Admin Bootstrap
+
+**Summary**: Fixed install.sh failure caused by missing passlib module on host system. Created management CLI tool inside API container for secure admin user creation.
+
+**Issue**: install.sh failed during "Creating default platform admin..." step with:
+```
+ModuleNotFoundError: No module named 'passlib'
+```
+
+**Root Cause**: Script was attempting to hash passwords using host Python environment (python3 -c "from passlib.hash import bcrypt..."), but passlib is not installed on the host system - it's only available inside the API container.
+
+**Resolution**:
+
+**Part A - Backend Dependencies**:
+- **Added psycopg2-binary>=2.9.9** to backend/api/pyproject.toml for PostgreSQL connections
+- **Added typer>=0.9.0** to backend/api/pyproject.toml for CLI framework
+- passlib[bcrypt]>=1.7.4 was already present (no change needed)
+
+**Part B - Management CLI Tool**:
+- **Created backend/api/src/manage.py** - Full-featured Typer CLI for administrative tasks
+- **Commands implemented**:
+  - `create-admin --username <u> --password <p> [--email <e>]`: Create/update platform admin with bcrypt password hashing
+  - `list-users [--role <r>] [--enabled-only]`: List all users with filtering
+  - `reset-password --username <u> --password <p>`: Reset user password
+  - `db-info`: Show database connection info and test connectivity
+- **Database connection**: Reads from environment variables or Docker secrets (POSTGRES_PASSWORD_FILE)
+- **Error handling**: Graceful failures with clear error messages
+- **Idempotent**: ON CONFLICT DO UPDATE ensures safe re-runs
+
+**Part C - install.sh Integration**:
+- **Replaced host-based password hashing** with docker exec manage.py inside API container
+- **Admin password persistence**: Saved to `secrets/platform_admin_pwd.txt` with 600 permissions
+- **Idempotent password generation**: Reuses existing password if file present, generates new if missing
+- **Command executed**:
+  ```bash
+  docker exec flexmon-api python -m src.manage create-admin \
+      --username platform_admin \
+      --password "$ADMIN_PASSWORD" \
+      --email admin@flexmon.local
+  ```
+- **Error handling**: Graceful failure with manual recovery instructions
+- **Image rebuild**: Existing `docker-compose build` step ensures new dependencies installed
+
+**Files Modified**:
+- backend/api/pyproject.toml: Added psycopg2-binary and typer dependencies
+- backend/api/src/manage.py: Created new management CLI (235 lines)
+- infra/install.sh: Replaced python3 one-liner with docker exec manage.py
+
+**Benefits**:
+- ✅ No host Python dependencies required for installation
+- ✅ Password hashing happens inside API container with proper dependencies
+- ✅ Reusable CLI for future admin tasks (password resets, user management)
+- ✅ Secure password storage in secrets/platform_admin_pwd.txt
+- ✅ Idempotent: Re-running install.sh safe and predictable
+- ✅ Clear error messages guide manual recovery if needed
+
+**Usage Example**:
+```bash
+# Inside install.sh (automated)
+docker exec flexmon-api python -m src.manage create-admin -u platform_admin -p <generated-pwd>
+
+# Manual admin creation
+docker exec flexmon-api python -m src.manage create-admin -u admin2 -p secret123 -e admin2@example.com
+
+# List all users
+docker exec flexmon-api python -m src.manage list-users
+
+# Reset password
+docker exec flexmon-api python -m src.manage reset-password -u admin2 -p newsecret
+```
+
+## 2025-11-04 - Fix: XMPP Image Updated to prosodyim/prosody:0.12 (ARM64)
+
+**Summary**: Updated XMPP server image from `prosody/prosody:0.12` to `prosodyim/prosody:0.12` for better ARM64 compatibility and official Prosody support.
+
+**Change**:
+- **Before**: `image: prosody/prosody:0.12`
+- **After**: `image: prosodyim/prosody:0.12`
+
+**Reason**: The `prosodyim/prosody` image is the official Prosody IM Docker image with verified ARM64 support for Apple Silicon M3 and other ARM64 platforms.
+
+**File Modified**:
+- infra/docker-compose.yml: Updated XMPP service image to prosodyim/prosody:0.12
+
+**Platform Support**:
+- ✅ linux/arm64/v8 (Apple Silicon M3, ARM servers)
+- ✅ linux/amd64 (x86_64)
+- Platform specification preserved: `platform: linux/arm64/v8`
+
+**Benefits**:
+- Official Prosody IM image with better maintenance and security updates
+- Verified ARM64 compatibility for Apple Silicon
+- Maintains existing configuration (ports 5222, 5269, 5280)
+- No breaking changes to XMPP client connections
