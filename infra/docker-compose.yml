@@ -11,7 +11,7 @@ services:
     secrets:
       - db_password
     volumes:
-      - timescale_data:/var/lib/postgresql/data
+      - ${DATA_DIR:-./data}/pg:/var/lib/postgresql/data
       - ../backend/api/src/models/timescale_schemas.sql:/docker-entrypoint-initdb.d/01-schemas.sql:ro
     ports:
       - "5432:5432"
@@ -37,7 +37,7 @@ services:
     secrets:
       - elastic_password
     volumes:
-      - es_data:/usr/share/elasticsearch/data
+      - ${DATA_DIR:-./data}/es:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
     healthcheck:
@@ -59,7 +59,7 @@ services:
       - ADMIN=${XMPP_ADMIN_USER:-admin}
       - PASSWORD=${XMPP_ADMIN_PASSWORD:-changeme}
     volumes:
-      - xmpp_data:/var/lib/prosody
+      - ${DATA_DIR:-./data}/xmpp:/var/lib/prosody
       - ${CERTS_DIR:-./certificates}:/etc/prosody/certs:ro
     ports:
       - "5222:5222"  # Client connections
@@ -116,7 +116,7 @@ services:
       - ai_token
     volumes:
       - ${CERTS_DIR:-./certificates}:/app/certs:ro
-      - backup_data:/app/backups
+      - ${DATA_DIR:-./data}/backups:/app/backups
     ports:
       - "8000:8000"
     depends_on:
@@ -192,12 +192,6 @@ services:
 networks:
   flexmon-net:
     driver: bridge
-
-volumes:
-  timescale_data:
-  es_data:
-  xmpp_data:
-  backup_data:
 
 secrets:
   db_password:

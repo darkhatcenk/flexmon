@@ -757,3 +757,141 @@ volumes:
 - ✅ Windows (including paths like "Program Files", "My Projects")
 - ✅ Linux (all standard paths)
 - ✅ Works in CI/CD environments with custom directory structures
+
+## 2025-11-04 - Fix: Normalized ALL Bind Mounts to Relative .env-Driven Paths
+
+**Summary**: Completed comprehensive normalization of ALL bind mounts in docker-compose.yml to use relative, .env-driven paths. Converted all named volumes to bind mounts for better control and portability across systems with spaces in directory names.
+
+**Changes Made**:
+
+**Part A - docker-compose.yml Complete Normalization**:
+- **Removed all named volumes**: Converted `timescale_data`, `es_data`, `xmpp_data`, `backup_data` to bind mounts
+- **TimescaleDB volumes**:
+  - **Before**: `timescale_data:/var/lib/postgresql/data` (named volume)
+  - **After**: `${DATA_DIR:-./data}/pg:/var/lib/postgresql/data` (bind mount)
+  - Schema file remains relative: `../backend/api/src/models/timescale_schemas.sql`
+- **Elasticsearch volumes**:
+  - **Before**: `es_data:/usr/share/elasticsearch/data` (named volume)
+  - **After**: `${DATA_DIR:-./data}/es:/usr/share/elasticsearch/data` (bind mount)
+- **XMPP (Prosody) volumes**:
+  - **Before**: `xmpp_data:/var/lib/prosody` (named volume)
+  - **After**: `${DATA_DIR:-./data}/xmpp:/var/lib/prosody` (bind mount)
+  - Certs already using: `${CERTS_DIR:-./certificates}:/etc/prosody/certs:ro`
+- **API volumes**:
+  - **Before**: `backup_data:/app/backups` (named volume)
+  - **After**: `${DATA_DIR:-./data}/backups:/app/backups` (bind mount)
+  - Certs already using: `${CERTS_DIR:-./certificates}:/app/certs:ro`
+- **Secrets**: All using `${SECRETS_DIR:-./secrets}/filename.txt`
+- **Removed volumes section**: No more named volumes in compose file
+
+**Part B - install.sh Enhanced Validation**:
+- **Added directory creation**: `${DATA_DIR}/backups` directory
+- **Added validation checks before docker compose**:
+  ```bash
+  # Check for absolute paths in docker-compose.yml
+  if grep -nE '/host_mnt|/Users|/home/' docker-compose.yml; then
+      echo "ERROR: Absolute host paths found"
+      exit 1
+  fi
+
+  # Validate docker-compose.yml syntax
+  docker compose config > /dev/null
+  ```
+- **Added installation summary** showing resolved paths:
+  ```
+  Resolved paths (all relative to infra/):
+    - SECRETS_DIR:  ./secrets
+    - CERTS_DIR:    ./certificates
+    - DATA_DIR:     ./data
+
+  Data directories (bind mounts):
+    - Elasticsearch:  ./data/es
+    - TimescaleDB:    ./data/pg
+    - XMPP:           ./data/xmpp
+    - Backups:        ./data/backups
+  ```
+
+**Part C - bilgi.md Updated**:
+- Changed "Volumes: timescale_data, es_data..." to "Data Directories (bind mounts)"
+- Now shows actual bind mount paths with ${DATA_DIR} expansion
+
+**Files Modified**:
+- infra/docker-compose.yml: Removed 4 named volumes, converted to bind mounts
+- infra/install.sh: Added backups dir, validation checks, summary output
+- releases.md: Comprehensive documentation of normalization
+
+**Validation Results**:
+```bash
+# No absolute paths found
+✓ No absolute host paths found in docker-compose.yml
+
+# Compose file validates successfully
+✓ docker-compose.yml syntax is valid
+```
+
+**Before/After Comparison**:
+
+**docker-compose.yml (volumes section)**:
+```yaml
+# BEFORE - Named volumes, potential issues with migrations
+volumes:
+  timescale_data:
+  es_data:
+  xmpp_data:
+  backup_data:
+
+services:
+  timescaledb:
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+
+# AFTER - Bind mounts, full control, portable
+# (volumes section removed entirely)
+
+services:
+  timescaledb:
+    volumes:
+      - ${DATA_DIR:-./data}/pg:/var/lib/postgresql/data
+```
+
+**Benefits**:
+- ✅ **Zero named volumes**: All data in `${DATA_DIR}` directory tree
+- ✅ **Easy backups**: Simply tar/rsync the `${DATA_DIR}` directory
+- ✅ **Portable**: Move data directory anywhere, update .env
+- ✅ **Transparent**: See all data in filesystem, no `docker volume inspect` needed
+- ✅ **Validated**: Automated checks prevent absolute paths
+- ✅ **Handles spaces**: Works with "My Documents", "Program Files", etc.
+- ✅ **Apple Silicon M3**: Native ARM64 support with bind mounts
+- ✅ **Developer-friendly**: Clear summary shows all resolved paths
+
+**Migration Notes**:
+- Existing named volumes (`docker volume ls`) will remain unused
+- To migrate existing data: `docker cp <container>:/var/lib/postgresql/data ./data/pg`
+- Or use `docker-compose down -v` to remove old named volumes after migration
+
+**Testing on Apple Silicon M3**:
+```bash
+cd infra
+./install.sh
+
+# Output shows:
+✓ Directories created: ./secrets, ./certificates, ./data
+  - Secrets: ./secrets
+  - Certificates: ./certificates
+  - Data: ./data (es, pg, xmpp, backups)
+
+✓ No absolute host paths found in docker-compose.yml
+✓ docker-compose.yml syntax is valid
+
+# Services start successfully with bind mounts
+docker compose ps
+# All containers running, no mount errors
+```
+
+**Path Resolution Example**:
+```bash
+# With .env containing DATA_DIR=./data
+# Docker sees: /Users/John Doe/My Projects/flexmon/infra/data/pg:/var/lib/postgresql/data
+# Compose resolves relative to infra/ directory
+# Works perfectly even with spaces in "My Projects"
+```

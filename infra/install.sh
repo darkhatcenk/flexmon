@@ -67,7 +67,11 @@ mkdir -p "${CERTS_DIR}"
 mkdir -p "${DATA_DIR}/es"
 mkdir -p "${DATA_DIR}/pg"
 mkdir -p "${DATA_DIR}/xmpp"
+mkdir -p "${DATA_DIR}/backups"
 echo -e "${GREEN}✓ Directories created: ${SECRETS_DIR}, ${CERTS_DIR}, ${DATA_DIR}${NC}"
+echo -e "  - Secrets: ${SECRETS_DIR}"
+echo -e "  - Certificates: ${CERTS_DIR}"
+echo -e "  - Data: ${DATA_DIR} (es, pg, xmpp, backups)"
 
 # Create placeholder secret files if they don't exist (prevents bind mount errors)
 echo ""
@@ -150,6 +154,30 @@ fi
 chmod 600 "${SECRETS_DIR}"/*.txt 2>/dev/null || true
 chmod 600 "${CERTS_DIR}"/*.key 2>/dev/null || true
 chmod 644 "${CERTS_DIR}"/*.crt 2>/dev/null || true
+
+echo ""
+echo "=========================================="
+echo "Validating configuration..."
+echo "=========================================="
+
+# Check for absolute paths in docker-compose.yml
+if grep -nE '/host_mnt|^[[:space:]]*-[[:space:]]*/Users|^[[:space:]]*-[[:space:]]*/home/' docker-compose.yml 2>/dev/null; then
+    echo -e "${RED}✗ ERROR: Absolute host paths found in docker-compose.yml${NC}"
+    echo -e "${YELLOW}  All bind mounts must use relative paths with env variables${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ No absolute host paths found in docker-compose.yml${NC}"
+
+# Validate docker-compose.yml syntax
+if command -v docker &> /dev/null; then
+    if docker compose config > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ docker-compose.yml syntax is valid${NC}"
+    else
+        echo -e "${YELLOW}⚠ docker compose config validation failed (continuing anyway)${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ Docker not found, skipping compose validation${NC}"
+fi
 
 echo ""
 echo "=========================================="
@@ -383,7 +411,11 @@ cat > ../bilgi.md << EOF
 
 - **Environment File:** infra/.env
 - **Docker Compose:** infra/docker-compose.yml
-- **Volumes:** timescale_data, es_data, xmpp_data, backup_data
+- **Data Directories (bind mounts):**
+  - Elasticsearch: infra/${DATA_DIR}/es
+  - TimescaleDB: infra/${DATA_DIR}/pg
+  - XMPP: infra/${DATA_DIR}/xmpp
+  - Backups: infra/${DATA_DIR}/backups
 
 ## Quick Commands
 
@@ -420,6 +452,30 @@ docker compose up -d
 EOF
 
 echo -e "${GREEN}✓ bilgi.md generated in repo root${NC}"
+echo ""
+
+echo "=========================================="
+echo "Installation Summary"
+echo "=========================================="
+echo ""
+echo -e "${GREEN}✓ FlexMON installation complete!${NC}"
+echo ""
+echo "Resolved paths (all relative to infra/):"
+echo "  - SECRETS_DIR:  ${SECRETS_DIR}"
+echo "  - CERTS_DIR:    ${CERTS_DIR}"
+echo "  - DATA_DIR:     ${DATA_DIR}"
+echo ""
+echo "Data directories (bind mounts):"
+echo "  - Elasticsearch:  ${DATA_DIR}/es"
+echo "  - TimescaleDB:    ${DATA_DIR}/pg"
+echo "  - XMPP:           ${DATA_DIR}/xmpp"
+echo "  - Backups:        ${DATA_DIR}/backups"
+echo ""
+echo "Next steps:"
+echo "  1. Review the configuration in bilgi.md"
+echo "  2. Verify services are running: docker compose ps"
+echo "  3. Check logs: docker compose logs -f"
+echo "  4. Access the frontend: http://localhost:3000"
 echo ""
 
 # Git Auto Commit & Push
