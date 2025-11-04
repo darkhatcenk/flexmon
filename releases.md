@@ -1037,3 +1037,120 @@ docker compose logs license-api | grep -i "database\|error"
 docker compose logs api | grep -i "database\|error"
 # Should show successful connection
 ```
+
+## 2025-11-04 - Fix: URL-Encoded DATABASE_URL and Robust Settings
+
+**Summary**: Fixed DATABASE_URL encoding issues with special characters in passwords. Implemented URL-safe password generation, URL encoding in connection strings, and robust Python settings with port validation and redacted logging.
+
+**Issue**: Database passwords with special characters (!, @, #, etc.) broke PostgreSQL connection strings, causing authentication failures. The raw password in `postgresql://user:p@ssw0rd!@host:5432/db` would be parsed incorrectly due to unencoded special characters.
+
+**Resolution**:
+
+**Part A - URL-Safe Password Generation in install.sh**:
+- **Enhanced secret generation** to produce URL-safe passwords using Python's `base64.urlsafe_b64encode`
+- **No special characters**: Generated passwords use only alphanumeric + `-_` characters (URL-safe base64 alphabet)
+- **Implementation**:
+  ```bash
+  python3 - <<'PY' > "${SECRETS_DIR}/db_password.txt"
+  import secrets, base64
+  print(base64.urlsafe_b64encode(secrets.token_bytes(24)).decode().rstrip('='))
+  PY
+  ```
+- **URL encoding fallback**: Even URL-safe passwords are URL-encoded using `urllib.parse.quote_plus` for robustness
+- **Masked logging**: DATABASE_URL displayed with masked password (first 2 + `****` + last 2 chars)
+
+**Part B - Robust Python Settings (License-API)**:
+- **Updated backend/license-api/src/config.py**:
+  - Added `DB_HOST` and `DB_PORT` environment variable support with validation aliases
+  - Port validation with `@field_validator` - coerces to int, validates range 1-65535, fallback to 5432
+  - Enhanced `get_database_url()` to URL-encode password: `urllib.parse.quote_plus(self.db_password)`
+  - Added `get_redacted_database_url()` for safe logging - masks password with regex
+  - Imports: `urllib.parse` for encoding, `re` for masking
+- **Updated backend/license-api/src/main.py**:
+  - Added startup logging with redacted DSN: `print(f"License-API connecting to database: {settings.get_redacted_database_url()}")`
+  - Confirms database connection pool initialization
+  - Helps diagnose connection issues without exposing secrets in logs
+
+**Part C - Robust Python Settings (API)**:
+- **backend/api/src/config.py** already enhanced in previous session:
+  - Port validation with fallback
+  - URL-encoded password in `get_database_url()`
+  - Redacted URL method for safe logging
+  - Full support for discrete DB environment variables (DB_HOST, DB_PORT, etc.)
+
+**Part D - install.sh DATABASE_URL Construction**:
+- Already implemented in previous session (lines 142-149):
+  - URL-encodes password: `urllib.parse.quote_plus(os.environ["DBPW"])`
+  - Writes resolved DATABASE_URL to .env with encoded password
+  - Supports both variable interpolation (`${POSTGRES_USER}`) and direct values
+
+**Files Modified**:
+- backend/license-api/src/config.py: Added URL encoding, port validation, redacted URL method
+- backend/license-api/src/main.py: Added redacted DSN startup logging
+- backend/api/src/config.py: (Already enhanced in previous fix)
+- infra/install.sh: (Already enhanced with URL-safe password generation and encoding)
+
+**Database Connection Flow**:
+```
+1. install.sh generates URL-safe password (base64url encoding)
+   → vQx8K2mN9pL4jR7tW1sH6gF3dA5c
+
+2. install.sh URL-encodes password (even though already safe)
+   → vQx8K2mN9pL4jR7tW1sH6gF3dA5c (unchanged, but safe for special chars)
+
+3. install.sh writes DATABASE_URL to .env
+   → DATABASE_URL=postgresql://flexmon:vQx8K2mN9pL4jR7tW1sH6gF3dA5c@timescaledb:5432/flexmon
+
+4. Python settings reads DATABASE_URL from .env
+   → If DATABASE_URL set: use as-is
+   → If not set: build from discrete vars with URL encoding
+
+5. Startup logging shows redacted DSN
+   → License-API connecting to database: postgresql://flexmon:vQ****5c@timescaledb:5432/flexmon
+```
+
+**Benefits**:
+- ✅ **URL-safe passwords**: No special characters in generated passwords
+- ✅ **URL encoding**: Handles any password (even with special chars) via `quote_plus`
+- ✅ **Port validation**: Invalid ports fallback to 5432 with warning
+- ✅ **Redacted logging**: Passwords masked in logs (first 2 + `****` + last 2)
+- ✅ **Flexible configuration**: Supports DATABASE_URL or discrete DB_* variables
+- ✅ **Diagnostic logging**: Startup logs show connection info without exposing secrets
+- ✅ **Robust error handling**: Graceful fallbacks for invalid configurations
+- ✅ **Idempotent**: Safe to re-run install.sh, regenerates .env cleanly
+
+**Testing**:
+```bash
+cd infra
+./install.sh
+
+# Check .env has URL-safe password
+grep "POSTGRES_PASSWORD" .env
+# Should show: POSTGRES_PASSWORD=vQx8K2mN9pL4jR7tW1sH6gF3dA5c (URL-safe)
+
+# Check DATABASE_URL is properly constructed
+grep "DATABASE_URL" .env
+# Should show: DATABASE_URL=postgresql://flexmon:<url-safe-password>@timescaledb:5432/flexmon
+
+# Check License-API startup logs
+docker compose logs license-api | grep "connecting to database"
+# Should show: License-API connecting to database: postgresql://flexmon:vQ****5c@timescaledb:5432/flexmon
+
+# Verify connection works
+docker exec flexmon-license-api python -c "import asyncpg; asyncpg.connect('postgresql://...')"
+# Should succeed without authentication errors
+```
+
+**Edge Cases Handled**:
+- ✅ Passwords with special chars: `p@ssw0rd!#$%^&*()` → URL-encoded automatically
+- ✅ Invalid DB_PORT (e.g., "99999"): Falls back to 5432 with warning
+- ✅ Missing DATABASE_URL: Builds from discrete vars with encoding
+- ✅ Non-numeric DB_PORT: Falls back to 5432 with warning
+- ✅ Empty/null passwords: Uses default "changeme" with warning
+
+**Security Improvements**:
+- URL-safe password generation eliminates character encoding ambiguity
+- Redacted logging prevents password exposure in logs/monitoring
+- Port validation prevents invalid configurations
+- Clear startup diagnostics aid troubleshooting without exposing secrets
+
