@@ -1348,3 +1348,4 @@ docker compose ps             # Verify all containers running
 docker compose logs -f api    # Check logs for any issues
 ```
 
+2025-11-04 11:55 UTC — Fix: Switched secrets to docker-compose secrets with relative .env paths; removed absolute /host_mnt|/Users mounts; install.sh now creates secret files and guards compose.
