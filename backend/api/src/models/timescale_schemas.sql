@@ -402,12 +402,44 @@ $$ LANGUAGE plpgsql;
 -- COMPRESSION
 -- =============================================================================
 
--- Enable compression on older chunks (after 1 day)
+-- Enable compression settings on hypertables (must be done before adding policies)
+ALTER TABLE metrics_cpu
+  SET (timescaledb.compress,
+       timescaledb.compress_orderby = 'timestamp DESC',
+       timescaledb.compress_segmentby = 'tenant_id,host');
+
+ALTER TABLE metrics_memory
+  SET (timescaledb.compress,
+       timescaledb.compress_orderby = 'timestamp DESC',
+       timescaledb.compress_segmentby = 'tenant_id,host');
+
+ALTER TABLE metrics_disk
+  SET (timescaledb.compress,
+       timescaledb.compress_orderby = 'timestamp DESC',
+       timescaledb.compress_segmentby = 'tenant_id,host,device');
+
+ALTER TABLE metrics_network
+  SET (timescaledb.compress,
+       timescaledb.compress_orderby = 'timestamp DESC',
+       timescaledb.compress_segmentby = 'tenant_id,host,interface');
+
+ALTER TABLE metrics_process
+  SET (timescaledb.compress,
+       timescaledb.compress_orderby = 'timestamp DESC',
+       timescaledb.compress_segmentby = 'tenant_id,host,name');
+
+ALTER TABLE host_info
+  SET (timescaledb.compress,
+       timescaledb.compress_orderby = 'timestamp DESC',
+       timescaledb.compress_segmentby = 'tenant_id,host');
+
+-- Add compression policies (compress chunks older than 1 day)
 SELECT add_compression_policy('metrics_cpu', INTERVAL '1 day', if_not_exists => TRUE);
 SELECT add_compression_policy('metrics_memory', INTERVAL '1 day', if_not_exists => TRUE);
 SELECT add_compression_policy('metrics_disk', INTERVAL '1 day', if_not_exists => TRUE);
 SELECT add_compression_policy('metrics_network', INTERVAL '1 day', if_not_exists => TRUE);
 SELECT add_compression_policy('metrics_process', INTERVAL '1 day', if_not_exists => TRUE);
+SELECT add_compression_policy('host_info', INTERVAL '1 day', if_not_exists => TRUE);
 
 -- =============================================================================
 -- HELPER FUNCTIONS
