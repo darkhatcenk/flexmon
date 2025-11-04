@@ -895,3 +895,145 @@ docker compose ps
 # Compose resolves relative to infra/ directory
 # Works perfectly even with spaces in "My Projects"
 ```
+
+## 2025-11-04 - Fix: API Dependencies — Added PyJWT to Satisfy import jwt
+
+**Summary**: Fixed API import error by adding PyJWT>=2.8.0 dependency to backend/api/pyproject.toml.
+
+**Issue**: API code attempted to `import jwt` but PyJWT was not in dependencies list, causing ImportError at runtime.
+
+**Resolution**:
+- **Added PyJWT>=2.8.0** to backend/api/pyproject.toml dependencies
+- Kept existing python-jose[cryptography] for backward compatibility
+- Both libraries can coexist (jose uses different import path)
+
+**File Modified**:
+- backend/api/pyproject.toml: Added PyJWT>=2.8.0 to dependencies list
+
+**Benefit**: API can now use both `from jose import jwt` and `import jwt` depending on code needs
+
+## 2025-11-04 - Fix: Compose Env Wiring — Services Now Read Resolved Values from .env
+
+**Summary**: Fixed docker-compose.yml environment variable wiring to use env_file and resolved values from .env, eliminating problematic command substitution strings like `$$(cat /run/secrets/...)`.
+
+**Issue**:
+- LICENSE-API and API services had `DATABASE_URL=postgresql://...$$( cat /run/secrets/db_password)...` in environment
+- Command substitution `$$(cat ...)` is evaluated at runtime inside container, but with empty context
+- Results in literal strings or connection failures
+- Not portable across systems
+
+**Resolution**:
+
+**Part A - License-API Configuration Enhancement**:
+- Updated backend/license-api/src/config.py to support both:
+  - Full `DATABASE_URL` from .env
+  - Discrete variables: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+- Added `get_database_url()` method to build DSN from parts if needed
+- Falls back to sensible defaults (host=timescaledb, port=5432, user=flexmon, db=flexmon)
+- Updated main.py startup to use `settings.get_database_url()`
+
+**Part B - Docker Compose Environment Wiring**:
+- **License-API service**:
+  - **Before**: `DATABASE_URL=postgresql://${POSTGRES_USER}:$$(cat /run/secrets/db_password)@...`
+  - **After**: Uses `env_file: ["./.env"]` to read resolved `DATABASE_URL` directly
+  - Removed db_password from secrets (no longer needed for connection string)
+  - Kept api_secret for API_SECRET_KEY_FILE
+- **API service**:
+  - **Before**: `DATABASE_URL=postgresql://${POSTGRES_USER}:$$(cat /run/secrets/db_password)@...`
+  - **After**: Uses `env_file: ["./.env"]` to read resolved `DATABASE_URL` directly
+  - Removed db_password from secrets (connection string in .env has real value)
+  - Kept elastic_password, api_secret, ai_token for _FILE references
+
+**Part C - install.sh Secret Resolution**:
+- **Added section after secret generation** to resolve secrets into .env:
+  ```bash
+  # Read secret values from files
+  DB_PASSWORD=$(cat "${SECRETS_DIR}/db_password.txt")
+  ES_PASSWORD=$(cat "${SECRETS_DIR}/elastic_password.txt")
+  API_SECRET=$(cat "${SECRETS_DIR}/api_secret.txt")
+  AI_TOKEN=$(cat "${SECRETS_DIR}/ai_token.txt")
+
+  # Write all configuration to .env (resolved, no $(cat ...) strings)
+  cat > .env << EOF
+  DATABASE_URL=postgresql://${POSTGRES_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${POSTGRES_DB}
+  POSTGRES_PASSWORD=${DB_PASSWORD}
+  # ... etc
+  EOF
+  ```
+- **Key variables written to .env**:
+  - `DATABASE_URL`: Full PostgreSQL connection string with real password
+  - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`: Discrete database configs
+  - `DB_HOST`, `DB_PORT`, `DB_NAME`: Connection parameters
+  - `ES_PASSWORD`: Elasticsearch password (resolved)
+  - `API_SECRET`: API secret key (resolved)
+  - `AI_TOKEN`: AI service token (resolved)
+  - `SECRETS_DIR`, `CERTS_DIR`, `DATA_DIR`: Directory paths
+
+**Part D - Rebuild Step**:
+- Added explicit rebuild of api and license-api before starting services
+- Ensures PyJWT dependency is installed
+- `docker-compose build api license-api` before `docker compose up -d`
+
+**Files Modified**:
+- backend/license-api/src/config.py: Enhanced Settings with discrete DB vars and get_database_url()
+- backend/license-api/src/main.py: Updated to use settings.get_database_url()
+- infra/docker-compose.yml: Added env_file to license-api and api services, removed command substitutions
+- infra/install.sh: Added secret resolution section, writes resolved values to .env
+
+**Before/After .env Example**:
+
+**BEFORE** (.env with placeholders):
+```bash
+POSTGRES_PASSWORD=__AUTO__
+# Services try to use $(cat ...) at runtime - fails!
+```
+
+**AFTER** (.env with resolved values):
+```bash
+# Database Configuration
+POSTGRES_USER=flexmon
+POSTGRES_PASSWORD=vQx8K2mN9pL4jR7tW1sH6gF3dA5cB0nM==
+POSTGRES_DB=flexmon
+DB_HOST=timescaledb
+DB_PORT=5432
+DB_NAME=flexmon
+
+# Database URL (resolved, ready to use)
+DATABASE_URL=postgresql://flexmon:vQx8K2mN9pL4jR7tW1sH6gF3dA5cB0nM==@timescaledb:5432/flexmon
+
+# Other secrets (resolved)
+ES_PASSWORD=xT4mK9nL2pW7jR1sH8gF6dA3cB5vQ0nM==
+API_SECRET=e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7
+AI_TOKEN=yT4mK9nL2pW7jR1sH8gF6dA3cB5vQ0nM==
+```
+
+**Benefits**:
+- ✅ **No command substitution**: All values resolved at install time
+- ✅ **License-API connects**: Gets real DATABASE_URL from .env
+- ✅ **API connects**: Gets real DATABASE_URL from .env
+- ✅ **Portable**: .env can be copied between systems
+- ✅ **Debuggable**: Can inspect .env to see actual connection strings
+- ✅ **Flexible**: Can override DATABASE_URL or use discrete vars
+- ✅ **Idempotent**: Re-running install.sh regenerates .env cleanly
+
+**Testing**:
+```bash
+cd infra
+./install.sh
+
+# Check .env has resolved values (no $(cat ...) strings)
+grep "DATABASE_URL" .env
+# Should show: DATABASE_URL=postgresql://flexmon:<actual-password>@timescaledb:5432/flexmon
+
+# Verify no command substitutions in environment
+docker compose config | grep "\$(cat"
+# Should return nothing
+
+# Test License-API connection
+docker compose logs license-api | grep -i "database\|error"
+# Should show successful connection
+
+# Test API connection
+docker compose logs api | grep -i "database\|error"
+# Should show successful connection
+```

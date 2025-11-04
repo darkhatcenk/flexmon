@@ -22,7 +22,7 @@ db_pool: asyncpg.Pool = None
 async def startup():
     """Initialize database connection"""
     global db_pool
-    db_pool = await asyncpg.create_pool(settings.database_url, min_size=2, max_size=10)
+    db_pool = await asyncpg.create_pool(settings.get_database_url(), min_size=2, max_size=10)
 
 
 @app.on_event("shutdown")
