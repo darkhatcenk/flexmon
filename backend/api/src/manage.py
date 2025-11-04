@@ -8,7 +8,7 @@ from typing import Optional
 
 import typer
 import psycopg2
-from passlib.hash import bcrypt
+from passlib.hash import bcrypt_sha256
 
 app = typer.Typer(help="FlexMON Management CLI")
 
@@ -59,8 +59,8 @@ def create_admin(
     """
     typer.echo(f"🔧 Creating/updating platform admin user: {username}")
 
-    # Hash the password
-    password_hash = bcrypt.hash(password)
+    # Hash the password with bcrypt_sha256 (no 72-byte limit)
+    password_hash = bcrypt_sha256.hash(password)
 
     # Connect to database
     conn = get_db_connection()
@@ -159,7 +159,8 @@ def reset_password(
     """
     typer.echo(f"🔧 Resetting password for user: {username}")
 
-    password_hash = bcrypt.hash(password)
+    # Hash the password with bcrypt_sha256 (no 72-byte limit)
+    password_hash = bcrypt_sha256.hash(password)
 
     conn = get_db_connection()
     cur = conn.cursor()
