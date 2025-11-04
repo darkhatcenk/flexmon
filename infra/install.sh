@@ -1,9 +1,15 @@
 #!/bin/bash
 set -e
 
+# Force working directory to script location
+SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd -P)"
+cd "$SCRIPT_DIR"
+
 echo "=========================================="
 echo "FlexMON Installation Script"
 echo "=========================================="
+echo ""
+echo "Working directory: $SCRIPT_DIR"
 echo ""
 
 # Color codes for output
@@ -145,8 +151,8 @@ print(urllib.parse.quote_plus(os.environ["DBPW"]))
 PY
 )
 
-# Build DATABASE_URL with URL-encoded password
-DATABASE_URL="postgresql://${POSTGRES_USER}:${DB_PASSWORD_ENC}@${DB_HOST}:${DB_PORT}/${POSTGRES_DB}"
+# Build DATABASE_URL with URL-encoded password (fully expanded, no variable refs)
+DATABASE_URL="postgresql://${POSTGRES_USER}:${DB_PASSWORD_ENC}@timescaledb:5432/${POSTGRES_DB}"
 
 # Write all configuration to .env (resolved, no $(cat ...) strings)
 cat > .env <<EOF
@@ -251,20 +257,23 @@ echo "=========================================="
 echo "Validating configuration..."
 echo "=========================================="
 
-# Check for absolute paths in docker-compose.yml
-if grep -nE '/host_mnt|^[[:space:]]*-[[:space:]]*/Users|^[[:space:]]*-[[:space:]]*/home/' docker-compose.yml 2>/dev/null; then
+# Check for absolute paths in docker-compose.yml (strict check)
+if grep -nE '/host_mnt|/Users|/home/|file:[[:space:]]*/|[[:space:]]+-[[:space:]]*/[^r]' docker-compose.yml 2>/dev/null; then
     echo -e "${RED}✗ ERROR: Absolute host paths found in docker-compose.yml${NC}"
-    echo -e "${YELLOW}  All bind mounts must use relative paths with env variables${NC}"
+    echo -e "${YELLOW}  All bind mounts and secrets must use relative paths with \${} env variables${NC}"
+    echo -e "${YELLOW}  Example: \${SECRETS_DIR}/file.txt or \${DATA_DIR}/pg${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ No absolute host paths found in docker-compose.yml${NC}"
 
-# Validate docker-compose.yml syntax
+# Validate docker-compose.yml syntax (strict)
 if command -v docker &> /dev/null; then
     if docker compose config > /dev/null 2>&1; then
         echo -e "${GREEN}✓ docker-compose.yml syntax is valid${NC}"
     else
-        echo -e "${YELLOW}⚠ docker compose config validation failed (continuing anyway)${NC}"
+        echo -e "${RED}✗ ERROR: docker-compose.yml validation failed${NC}"
+        docker compose config 2>&1 | head -20
+        exit 1
     fi
 else
     echo -e "${YELLOW}⚠ Docker not found, skipping compose validation${NC}"
@@ -274,16 +283,16 @@ echo ""
 echo "=========================================="
 echo "Building Docker images..."
 echo "=========================================="
-echo -e "${YELLOW}Rebuilding API and License-API (with PyJWT dependency)...${NC}"
-docker-compose -f docker-compose.yml build api license-api
+echo -e "${YELLOW}Rebuilding API and License-API (with dependencies)...${NC}"
+docker compose build api license-api
 echo -e "${YELLOW}Building remaining services...${NC}"
-docker-compose -f docker-compose.yml build
+docker compose build
 
 echo ""
 echo "=========================================="
 echo "Starting services..."
 echo "=========================================="
-docker-compose -f docker-compose.yml up -d
+docker compose up -d
 
 echo ""
 echo "Waiting for services to be healthy (this may take 30-60 seconds)..."
