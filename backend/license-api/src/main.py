@@ -22,7 +22,10 @@ db_pool: asyncpg.Pool = None
 async def startup():
     """Initialize database connection"""
     global db_pool
+    # Log redacted DSN for diagnostics
+    print(f"License-API connecting to database: {settings.get_redacted_database_url()}")
     db_pool = await asyncpg.create_pool(settings.get_database_url(), min_size=2, max_size=10)
+    print("License-API database connection pool initialized")
 
 
 @app.on_event("shutdown")
