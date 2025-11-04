@@ -658,3 +658,102 @@ docker exec flexmon-api python -m src.manage reset-password -u admin2 -p newsecr
 - Verified ARM64 compatibility for Apple Silicon
 - Maintains existing configuration (ports 5222, 5269, 5280)
 - No breaking changes to XMPP client connections
+
+## 2025-11-04 - Fix: Switched to Relative Bind Mounts for Paths with Spaces
+
+**Summary**: Fixed Docker Compose bind mount failures when host paths contain spaces by switching from absolute paths to environment-driven relative paths and ensuring all directories exist before container startup.
+
+**Issue**: Docker Compose failed on macOS/Windows systems with paths containing spaces:
+```
+invalid mount config for type 'bind': bind source path does not exist: /host_mnt/Users/.../infra/secrets/...
+```
+
+**Root Cause**:
+- Absolute paths and hardcoded relative paths (`../infra/certificates`) fail when directory names contain spaces
+- Secret files didn't exist before Docker Compose tried to bind mount them
+- No consistent directory structure enforcement
+
+**Resolution**:
+
+**Part A - Environment-Driven Directory Paths**:
+- **Added to infra/.env.example**:
+  ```bash
+  SECRETS_DIR=./secrets
+  CERTS_DIR=./certificates
+  DATA_DIR=./data
+  ```
+- All paths relative to `infra/` directory where docker-compose.yml lives
+- Configurable via .env for custom layouts
+
+**Part B - Updated docker-compose.yml Bind Mounts**:
+- **Before** (hardcoded, fragile):
+  ```yaml
+  volumes:
+    - ../infra/certificates:/etc/prosody/certs:ro
+  secrets:
+    db_password:
+      file: ./secrets/db_password.txt
+  ```
+- **After** (env-driven, robust):
+  ```yaml
+  volumes:
+    - ${CERTS_DIR:-./certificates}:/etc/prosody/certs:ro
+  secrets:
+    db_password:
+      file: ${SECRETS_DIR:-./secrets}/db_password.txt
+  ```
+- **Services updated**: XMPP (Prosody), API, all secrets files
+- Defaults ensure backward compatibility if .env missing
+
+**Part C - install.sh Directory Creation**:
+- **Early directory creation** (before Docker Compose):
+  ```bash
+  # Load .env to get directory paths
+  export $(grep -v '^#' .env | grep -v '^$' | xargs)
+
+  # Create all required directories
+  mkdir -p "${SECRETS_DIR}"
+  mkdir -p "${CERTS_DIR}"
+  mkdir -p "${DATA_DIR}/es"
+  mkdir -p "${DATA_DIR}/pg"
+  mkdir -p "${DATA_DIR}/xmpp"
+
+  # Create placeholder secret files (prevents bind mount errors)
+  touch "${SECRETS_DIR}/db_password.txt"
+  touch "${SECRETS_DIR}/elastic_password.txt"
+  touch "${SECRETS_DIR}/api_secret.txt"
+  touch "${SECRETS_DIR}/ai_token.txt"
+  ```
+- **All script paths updated**: Changed hardcoded `secrets/` and `certificates/` to use `${SECRETS_DIR}` and `${CERTS_DIR}` variables throughout
+- **Safe re-runs**: Uses `-s` flag to only generate secrets if files are empty
+
+**Files Modified**:
+- infra/.env.example: Added SECRETS_DIR, CERTS_DIR, DATA_DIR variables
+- infra/docker-compose.yml: Updated all bind mounts and secrets to use env variables
+- infra/install.sh: Added directory creation, updated all path references to use variables
+
+**Before/After Example**:
+```yaml
+# Before: Hardcoded path, fails with spaces
+volumes:
+  - ../infra/certificates:/app/certs:ro
+
+# After: Env-driven relative path, handles spaces
+volumes:
+  - ${CERTS_DIR:-./certificates}:/app/certs:ro
+```
+
+**Benefits**:
+- ✅ Handles paths with spaces in directory names
+- ✅ Relative paths work consistently across macOS, Windows, Linux
+- ✅ Directories created before Docker Compose starts
+- ✅ Placeholder files prevent bind mount errors
+- ✅ Configurable directory structure via .env
+- ✅ Backward compatible with default paths
+- ✅ Consistent variable usage throughout install.sh
+
+**Platform Compatibility**:
+- ✅ macOS (including paths like "My Documents", "Application Support")
+- ✅ Windows (including paths like "Program Files", "My Projects")
+- ✅ Linux (all standard paths)
+- ✅ Works in CI/CD environments with custom directory structures

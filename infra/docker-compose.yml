@@ -60,7 +60,7 @@ services:
       - PASSWORD=${XMPP_ADMIN_PASSWORD:-changeme}
     volumes:
       - xmpp_data:/var/lib/prosody
-      - ../infra/certificates:/etc/prosody/certs:ro
+      - ${CERTS_DIR:-./certificates}:/etc/prosody/certs:ro
     ports:
       - "5222:5222"  # Client connections
       - "5269:5269"  # Server connections
@@ -115,7 +115,7 @@ services:
       - api_secret
       - ai_token
     volumes:
-      - ../infra/certificates:/app/certs:ro
+      - ${CERTS_DIR:-./certificates}:/app/certs:ro
       - backup_data:/app/backups
     ports:
       - "8000:8000"
@@ -201,10 +201,10 @@ volumes:
 
 secrets:
   db_password:
-    file: ./secrets/db_password.txt
+    file: ${SECRETS_DIR:-./secrets}/db_password.txt
   elastic_password:
-    file: ./secrets/elastic_password.txt
+    file: ${SECRETS_DIR:-./secrets}/elastic_password.txt
   api_secret:
-    file: ./secrets/api_secret.txt
+    file: ${SECRETS_DIR:-./secrets}/api_secret.txt
   ai_token:
-    file: ./secrets/ai_token.txt
+    file: ${SECRETS_DIR:-./secrets}/ai_token.txt
