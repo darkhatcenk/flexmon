@@ -1350,3 +1350,4 @@ docker compose logs -f api    # Check logs for any issues
 
 2025-11-04 11:55 UTC — Fix: Switched secrets to docker-compose secrets with relative .env paths; removed absolute /host_mnt|/Users mounts; install.sh now creates secret files and guards compose.
 2025-11-04 12:46 UTC — fix(timescale+deps): enable compression before policies on hypertables; add aiohttp for async ES client
+2025-11-04 13:00 UTC — fix(sql+es): get_latest_metrics uses ts (no reserved names); pin elasticsearch<9 and force compatible-with=8 headers; ensure async ES client closes on shutdown

@@ -18,16 +18,23 @@ async def init_es():
     """Initialize Elasticsearch client"""
     global _es_client
 
+    # Force ES v8 compatibility headers
+    default_headers = {
+        "Accept": "application/vnd.elasticsearch+json; compatible-with=8",
+        "Content-Type": "application/vnd.elasticsearch+json; compatible-with=8",
+    }
+
     _es_client = AsyncElasticsearch(
         [settings.elasticsearch_url],
         basic_auth=(settings.elasticsearch_user, settings.elasticsearch_password),
         verify_certs=False,
-        request_timeout=30
+        request_timeout=30,
+        headers=default_headers
     )
 
     # Test connection
     await _es_client.cluster.health()
-    logger.info("Elasticsearch client initialized")
+    logger.info("Elasticsearch client initialized with v8 compatibility")
 
 
 async def close_es():
