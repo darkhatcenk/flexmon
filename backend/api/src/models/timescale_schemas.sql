@@ -449,7 +449,7 @@ SELECT add_compression_policy('host_info', INTERVAL '1 day', if_not_exists => TR
 CREATE OR REPLACE FUNCTION get_latest_metrics(p_tenant_id VARCHAR, p_host VARCHAR)
 RETURNS TABLE (
     metric_type VARCHAR,
-    timestamp TIMESTAMP,
+    ts TIMESTAMPTZ,
     value JSONB
 ) AS $$
 BEGIN
