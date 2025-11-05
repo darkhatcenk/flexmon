@@ -108,7 +108,33 @@ class AuthStore {
       this.notify()
       return { success: true }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.detail || 'Login failed'
+      let errorMessage = 'Login failed'
+
+      if (error.response) {
+        const status = error.response.status
+        const detail = error.response.data?.detail || ''
+
+        if (status === 400) {
+          errorMessage = detail || 'Invalid username or password'
+        } else if (status === 401) {
+          errorMessage = detail === 'invalid_credentials'
+            ? 'Invalid username or password'
+            : 'Invalid credentials'
+        } else if (status === 403) {
+          errorMessage = 'Account is disabled'
+        } else if (status === 503) {
+          errorMessage = detail === 'bootstrap_required'
+            ? 'System not initialized. Please contact your administrator.'
+            : 'Service temporarily unavailable'
+        } else if (status === 500) {
+          errorMessage = 'Internal server error. Please try again.'
+        } else {
+          errorMessage = detail || `Error: ${status}`
+        }
+      } else if (error.request) {
+        errorMessage = 'Unable to connect to server. Please check your connection.'
+      }
+
       return { success: false, error: errorMessage }
     }
   }

@@ -6,7 +6,7 @@ from typing import Optional, Annotated
 import jwt
 from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from passlib.hash import bcrypt
+from passlib.hash import bcrypt_sha256
 
 from ..config import settings
 
@@ -45,13 +45,13 @@ def verify_token(token: str) -> dict:
 
 
 def hash_password(password: str) -> str:
-    """Hash password using bcrypt"""
-    return bcrypt.hash(password)
+    """Hash password using bcrypt_sha256 (no 72-byte limit)"""
+    return bcrypt_sha256.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash"""
-    return bcrypt.verify(plain_password, hashed_password)
+    """Verify password against hash using bcrypt_sha256"""
+    return bcrypt_sha256.verify(plain_password, hashed_password)
 
 
 async def get_current_user(
