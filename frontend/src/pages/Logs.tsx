@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { esSearch } from '../lib/es'
+import { safeArray } from '../lib/safe'
 
 export default function Logs() {
   const [query, setQuery] = useState('')
@@ -188,12 +189,12 @@ export default function Logs() {
       {/* Log Results */}
       <div className="card">
         <h3>
-          Results ({logs?.hits?.hits?.length || 0} logs)
+          Results ({safeArray(logs?.hits?.hits).length} logs)
           {isLoading && <span style={{ marginLeft: '10px', color: '#999' }}>Loading...</span>}
         </h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
-          {logs?.hits?.hits?.map((hit: any, idx: number) => {
+          {safeArray(logs?.hits?.hits).map((hit: any, idx: number) => {
             const log = hit._source
             const isExpanded = expandedRow === hit._id
             return (

@@ -1352,3 +1352,5 @@ docker compose logs -f api    # Check logs for any issues
 2025-11-04 12:46 UTC — fix(timescale+deps): enable compression before policies on hypertables; add aiohttp for async ES client
 2025-11-04 13:00 UTC — fix(sql+es): get_latest_metrics uses ts (no reserved names); pin elasticsearch<9 and force compatible-with=8 headers; ensure async ES client closes on shutdown
 2025-11-04 13:15 UTC — fix(auth): pin passlib>=1.7.4 and bcrypt<4; switch admin hashing to bcrypt_sha256 to avoid 72-byte limit & backend quirks
+2025-11-04 13:30 UTC — fix(frontend): guard charts/lists, show 'Veri alınamıyor' on empty/invalid data, add DEBUG_UI logs, prevent NaN/.map crashes
+2025-11-04 13:30 UTC — fix(xmpp): add healthcheck to prosody 0.12 service; stable volumes with relative paths
