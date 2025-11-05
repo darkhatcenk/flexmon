@@ -3,12 +3,19 @@ User management endpoints
 """
 from fastapi import APIRouter, HTTPException, status, Depends
 from typing import List
+from pydantic import BaseModel
 from ..models import User, UserCreate
-from ..deps.security import get_tenant_admin, hash_password
+from ..deps.security import get_tenant_admin, get_current_user, hash_password, verify_password
 from ..deps.tenancy import get_tenant_id_optional
 from ..services import timescale
 
 router = APIRouter()
+
+
+class PasswordChangeRequest(BaseModel):
+    """Password change request"""
+    current_password: str
+    new_password: str
 
 
 @router.get("/users", response_model=List[User])
@@ -202,3 +209,41 @@ async def delete_user(
     )
 
     return {"message": "User deleted successfully"}
+
+
+@router.put("/users/me/password")
+async def change_own_password(
+    request: PasswordChangeRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Change current user's password
+    """
+    # Get current password hash
+    query = "SELECT password_hash FROM users WHERE id = $1"
+    user = await timescale.fetch_one(query, current_user["user_id"])
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Verify current password
+    if not verify_password(request.current_password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+
+    # Hash new password
+    new_password_hash = hash_password(request.new_password)
+
+    # Update password
+    await timescale.execute_query(
+        "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+        new_password_hash,
+        current_user["user_id"]
+    )
+
+    return {"message": "Password updated successfully"}

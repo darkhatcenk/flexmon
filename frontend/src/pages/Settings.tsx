@@ -1,10 +1,17 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api from '../lib/api'
+import { api } from '../lib/api'
 
 export default function Settings() {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState('security')
+  const [activeTab, setActiveTab] = useState('password')
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  })
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState('')
 
   // Fetch current settings
   const { data: settings } = useQuery({
@@ -48,13 +55,51 @@ export default function Settings() {
     }
   })
 
+  // Password change mutation
+  const passwordMutation = useMutation({
+    mutationFn: (data: { current_password: string; new_password: string }) =>
+      api.put('/v1/users/me/password', data),
+    onSuccess: () => {
+      setPasswordSuccess('Password updated successfully')
+      setPasswordError('')
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
+      setTimeout(() => setPasswordSuccess(''), 5000)
+    },
+    onError: (error: any) => {
+      setPasswordError(error.response?.data?.detail || 'Failed to update password')
+      setPasswordSuccess('')
+    }
+  })
+
+  const handlePasswordChange = (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordError('')
+    setPasswordSuccess('')
+
+    // Validate
+    if (passwordData.newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters')
+      return
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError('New passwords do not match')
+      return
+    }
+
+    passwordMutation.mutate({
+      current_password: passwordData.currentPassword,
+      new_password: passwordData.newPassword
+    })
+  }
+
   return (
     <div>
       <h2>Settings</h2>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #ddd' }}>
-        {['security', 'notifications', 'backup', 'ai'].map(tab => (
+        {['password', 'security', 'notifications', 'backup', 'ai'].map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -73,6 +118,123 @@ export default function Settings() {
           </button>
         ))}
       </div>
+
+      {/* Password Tab */}
+      {activeTab === 'password' && (
+        <div className="card">
+          <h3>Change Password</h3>
+          <p style={{ color: '#666', marginBottom: '20px' }}>
+            Update your account password. Password must be at least 8 characters.
+          </p>
+
+          <form onSubmit={handlePasswordChange} style={{ maxWidth: '500px' }}>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                Current Password
+              </label>
+              <input
+                type="password"
+                value={passwordData.currentPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                New Password
+              </label>
+              <input
+                type="password"
+                value={passwordData.newPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                value={passwordData.confirmPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {passwordError && (
+              <div style={{
+                padding: '12px 16px',
+                backgroundColor: '#fee2e2',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                marginBottom: '20px',
+                fontSize: '14px',
+                color: '#dc2626'
+              }}>
+                {passwordError}
+              </div>
+            )}
+
+            {passwordSuccess && (
+              <div style={{
+                padding: '12px 16px',
+                backgroundColor: '#d1fae5',
+                border: '1px solid #a7f3d0',
+                borderRadius: '8px',
+                marginBottom: '20px',
+                fontSize: '14px',
+                color: '#065f46'
+              }}>
+                {passwordSuccess}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={passwordMutation.isPending}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: passwordMutation.isPending ? '#9ca3af' : '#667eea',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: passwordMutation.isPending ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {passwordMutation.isPending ? 'Updating...' : 'Update Password'}
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Security Tab */}
       {activeTab === 'security' && (

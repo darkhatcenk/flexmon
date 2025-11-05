@@ -4,7 +4,7 @@ Authentication endpoints
 from fastapi import APIRouter, HTTPException, status, Depends
 from datetime import datetime, timedelta
 from ..models import UserLogin, Token, User
-from ..deps.security import create_access_token, verify_password, get_platform_admin
+from ..deps.security import create_access_token, verify_password, get_platform_admin, get_tenant_admin
 from ..services import timescale
 from ..config import settings
 import secrets
@@ -106,7 +106,7 @@ async def generate_one_time_password(current_user: dict = Depends(get_platform_a
 
 
 @router.get("/auth/me", response_model=User)
-async def get_current_user_info(current_user: dict = Depends(get_platform_admin)):
+async def get_current_user_info(current_user: dict = Depends(get_tenant_admin)):
     """
     Get current user information
     """

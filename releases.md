@@ -1354,3 +1354,4 @@ docker compose logs -f api    # Check logs for any issues
 2025-11-04 13:15 UTC — fix(auth): pin passlib>=1.7.4 and bcrypt<4; switch admin hashing to bcrypt_sha256 to avoid 72-byte limit & backend quirks
 2025-11-04 13:30 UTC — fix(frontend): guard charts/lists, show 'Veri alınamıyor' on empty/invalid data, add DEBUG_UI logs, prevent NaN/.map crashes
 2025-11-04 13:30 UTC — fix(xmpp): add healthcheck to prosody 0.12 service; stable volumes with relative paths
+2025-11-04 14:00 UTC — feat(auth+ui): add login flow, JWT persistence, guarded routes & RBAC; Settings→Change Password; modernized header/cards/buttons; hide platform_admin in Users
