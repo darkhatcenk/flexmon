@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { safeArray } from '../lib/safe'
 
 export default function Alarms() {
   const [tenant, setTenant] = useState('')
@@ -222,7 +223,7 @@ export default function Alarms() {
       {/* Alarms Table */}
       <div className="card">
         <h3>
-          Alarms ({alerts?.data?.length || 0})
+          Alarms ({safeArray(alerts?.data).length})
           {isLoading && <span style={{ marginLeft: '10px', color: '#999' }}>Loading...</span>}
         </h3>
 
@@ -241,7 +242,7 @@ export default function Alarms() {
               </tr>
             </thead>
             <tbody>
-              {alerts?.data?.map((alarm: any) => (
+              {safeArray(alerts?.data).map((alarm: any) => (
                 <tr key={alarm.id} style={{ borderBottom: '1px solid #eee' }}>
                   <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
                     {new Date(alarm.triggered_at || alarm.created_at).toLocaleString()}

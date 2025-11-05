@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useNavigate } from 'react-router-dom'
+import { safeArray } from '../lib/safe'
 
 export default function Servers() {
   const [search, setSearch] = useState('')
@@ -122,7 +123,7 @@ export default function Servers() {
       {/* Servers Table */}
       <div className="card">
         <h3>
-          Servers ({servers?.data?.length || 0} of {servers?.total || 0})
+          Servers ({safeArray(servers?.data).length} of {servers?.total || 0})
           {isLoading && <span style={{ marginLeft: '10px', color: '#999' }}>Loading...</span>}
         </h3>
 
@@ -141,7 +142,7 @@ export default function Servers() {
               </tr>
             </thead>
             <tbody>
-              {servers?.data?.map((server: any) => (
+              {safeArray(servers?.data).map((server: any) => (
                 <tr
                   key={server.id}
                   onClick={() => handleRowClick(server.hostname)}

@@ -65,6 +65,12 @@ services:
       - "5222:5222"  # Client connections
       - "5269:5269"  # Server connections
       - "5280:5280"  # HTTP
+    healthcheck:
+      test: ["CMD-SHELL", "prosodyctl about >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
     networks:
       - flexmon-net
 

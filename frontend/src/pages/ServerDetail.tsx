@@ -2,7 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import Chart from 'react-apexcharts'
 import { ApexOptions } from 'apexcharts'
-import api from '../lib/api'
+import { api } from '../lib/api'
+import NoData from '../components/NoData'
+import { safeArray, toNumber, debugData } from '../lib/safe'
 
 export default function ServerDetail() {
   const { hostname } = useParams()
@@ -52,30 +54,61 @@ export default function ServerDetail() {
     enabled: !!hostname
   })
 
-  const createTimeSeriesChart = (data: any[], title: string, yAxisLabel: string): ApexOptions => ({
-    chart: {
-      type: 'line',
-      height: 300,
-      zoom: { enabled: true },
-      toolbar: { show: true }
-    },
-    title: { text: title, align: 'left' },
-    xaxis: {
-      type: 'datetime',
-      categories: data?.map(d => d.timestamp) || []
-    },
-    yaxis: {
-      title: { text: yAxisLabel },
-      min: 0,
-      max: 100
-    },
-    stroke: { curve: 'smooth', width: 2 },
-    dataLabels: { enabled: false },
-    tooltip: {
-      x: { format: 'dd MMM yyyy HH:mm' }
-    },
-    colors: ['#008FFB']
-  })
+  const createTimeSeriesChart = (data: any[], title: string, yAxisLabel: string): ApexOptions => {
+    const safeData = safeArray(data)
+    const categories = safeData.map(d => d?.timestamp || new Date().toISOString())
+
+    return {
+      chart: {
+        type: 'line',
+        height: 300,
+        zoom: { enabled: true },
+        toolbar: { show: true }
+      },
+      title: { text: title, align: 'left' },
+      xaxis: {
+        type: 'datetime',
+        categories
+      },
+      yaxis: {
+        title: { text: yAxisLabel },
+        min: 0,
+        max: 100
+      },
+      stroke: { curve: 'smooth', width: 2 },
+      dataLabels: { enabled: false },
+      tooltip: {
+        x: { format: 'dd MMM yyyy HH:mm' }
+      },
+      colors: ['#008FFB']
+    }
+  }
+
+  const renderTimeSeriesChart = (queryData: any, title: string, yAxisLabel: string, seriesName: string, endpoint: string) => {
+    const rawData = queryData?.data
+    const safeData = safeArray(rawData)
+    const sanitized = safeData.filter((d: any) => d && d.timestamp)
+    const values = sanitized.map((d: any) => toNumber(d.value, 0))
+
+    if (sanitized.length === 0 || values.every(v => v === 0)) {
+      debugData({
+        component: 'ServerDetail',
+        endpoint,
+        reason: 'empty-or-invalid-timeseries',
+        details: { originalLength: safeData.length, sanitizedLength: sanitized.length }
+      })
+      return <NoData reason="no-timeseries-data" height={300} />
+    }
+
+    return (
+      <Chart
+        options={createTimeSeriesChart(sanitized, title, yAxisLabel)}
+        series={[{ name: seriesName, data: values }]}
+        type="line"
+        height={300}
+      />
+    )
+  }
 
   return (
     <div>
@@ -87,51 +120,19 @@ export default function ServerDetail() {
       {/* 1-Week Charts */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px', marginBottom: '20px' }}>
         <div className="card">
-          <Chart
-            options={createTimeSeriesChart(cpuData?.data || [], 'CPU Usage (1 Week)', 'CPU %')}
-            series={[{
-              name: 'CPU %',
-              data: cpuData?.data?.map((d: any) => d.value) || []
-            }]}
-            type="line"
-            height={300}
-          />
+          {renderTimeSeriesChart(cpuData, 'CPU Usage (1 Week)', 'CPU %', 'CPU %', `/v1/metrics/history?host=${hostname}&metric=cpu`)}
         </div>
 
         <div className="card">
-          <Chart
-            options={createTimeSeriesChart(memoryData?.data || [], 'Memory Usage (1 Week)', 'Memory %')}
-            series={[{
-              name: 'Memory %',
-              data: memoryData?.data?.map((d: any) => d.value) || []
-            }]}
-            type="line"
-            height={300}
-          />
+          {renderTimeSeriesChart(memoryData, 'Memory Usage (1 Week)', 'Memory %', 'Memory %', `/v1/metrics/history?host=${hostname}&metric=memory`)}
         </div>
 
         <div className="card">
-          <Chart
-            options={createTimeSeriesChart(networkData?.data || [], 'Network Traffic (1 Week)', 'MB/s')}
-            series={[{
-              name: 'Network',
-              data: networkData?.data?.map((d: any) => d.value) || []
-            }]}
-            type="line"
-            height={300}
-          />
+          {renderTimeSeriesChart(networkData, 'Network Traffic (1 Week)', 'MB/s', 'Network', `/v1/metrics/history?host=${hostname}&metric=network`)}
         </div>
 
         <div className="card">
-          <Chart
-            options={createTimeSeriesChart(diskData?.data || [], 'Disk Usage (1 Week)', 'Disk %')}
-            series={[{
-              name: 'Disk %',
-              data: diskData?.data?.map((d: any) => d.value) || []
-            }]}
-            type="line"
-            height={300}
-          />
+          {renderTimeSeriesChart(diskData, 'Disk Usage (1 Week)', 'Disk %', 'Disk %', `/v1/metrics/history?host=${hostname}&metric=disk`)}
         </div>
       </div>
 
@@ -150,7 +151,7 @@ export default function ServerDetail() {
               </tr>
             </thead>
             <tbody>
-              {processes?.data?.map((proc: any) => (
+              {safeArray(processes?.data).map((proc: any) => (
                 <tr key={proc.pid} style={{ borderBottom: '1px solid #eee' }}>
                   <td style={{ padding: '8px' }}>{proc.pid}</td>
                   <td style={{ padding: '8px' }}>{proc.name}</td>
@@ -170,7 +171,7 @@ export default function ServerDetail() {
       <div className="card">
         <h3>Recent Alarms</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {alarms?.data?.map((alarm: any) => (
+          {safeArray(alarms?.data).map((alarm: any) => (
             <div
               key={alarm.id}
               style={{
