@@ -4,6 +4,11 @@ Administrative commands for FlexMON backend
 """
 import os
 import sys
+import secrets
+import base64
+import json
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -95,6 +100,109 @@ def create_admin(
     except psycopg2.Error as e:
         conn.rollback()
         typer.echo(f"❌ Failed to create/update user: {e}", err=True)
+        raise typer.Exit(code=1)
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.command()
+def reset_admin(
+    username: str = typer.Option("platform_admin", "--username", "-u", help="Admin username"),
+    email: Optional[str] = typer.Option("admin@flexmon.local", "--email", "-e", help="Admin email")
+):
+    """
+    Reset/create platform admin with auto-generated secure password
+
+    This command is designed for offline admin recovery and initial setup.
+    It generates a strong random password and prints it to stdout.
+
+    IMPORTANT: Only call this via docker exec, NOT via HTTP.
+    """
+    typer.echo(f"🔐 Resetting platform admin: {username}")
+
+    # Generate strong password (48 chars, URL-safe, no padding)
+    # Using 36 random bytes gives us 48 chars of base64url
+    password = base64.urlsafe_b64encode(secrets.token_bytes(36)).decode('ascii').rstrip('=')
+
+    # Ensure password is within bcrypt limits (< 72 bytes)
+    if len(password) > 64:
+        password = password[:64]
+
+    typer.echo(f"   Generated password length: {len(password)} chars")
+
+    # Hash the password with bcrypt_sha256 (no 72-byte limit)
+    password_hash = bcrypt_sha256.hash(password)
+
+    # Connect to database
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        # Upsert the user
+        cur.execute("""
+            INSERT INTO users (username, email, password_hash, role, tenant_id, enabled, created_at)
+            VALUES (%s, %s, %s, 'platform_admin', NULL, TRUE, NOW())
+            ON CONFLICT (username) DO UPDATE SET
+                email = EXCLUDED.email,
+                password_hash = EXCLUDED.password_hash,
+                role = 'platform_admin',
+                enabled = TRUE,
+                updated_at = NOW()
+        """, (username, email, password_hash))
+
+        conn.commit()
+
+        # Get user info
+        cur.execute("SELECT id, created_at FROM users WHERE username = %s", (username,))
+        user = cur.fetchone()
+
+        if user:
+            user_id, created_at = user
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+            typer.echo(f"\n✅ Platform admin reset successfully!")
+            typer.echo(f"   User ID: {user_id}")
+            typer.echo(f"   Username: {username}")
+            typer.echo(f"   Email: {email}")
+            typer.echo(f"   Role: platform_admin")
+            typer.echo(f"   Created: {created_at}")
+            typer.echo(f"\n🔑 CREDENTIALS (save these securely):")
+            typer.echo(f"   Username: {username}")
+            typer.echo(f"   Password: {password}")
+            typer.echo(f"\n⚠️  This password will NOT be shown again!")
+
+            # Write credentials to runtime directory if it exists
+            runtime_dir = Path("/app/runtime")
+            if runtime_dir.exists():
+                # Write JSON for programmatic access
+                creds_file = runtime_dir / "admin_credentials.json"
+                creds_data = {
+                    "username": username,
+                    "password": password,
+                    "timestamp": timestamp,
+                    "user_id": user_id
+                }
+                with open(creds_file, 'w') as f:
+                    json.dump(creds_data, f, indent=2)
+                typer.echo(f"\n📝 Credentials written to: {creds_file}")
+
+                # Append to info.md for human-readable tracking
+                info_file = runtime_dir / "info.md"
+                with open(info_file, 'a') as f:
+                    f.write(f"\n## Admin Reset - {timestamp}\n")
+                    f.write(f"- Username: `{username}`\n")
+                    f.write(f"- Password: `{password[:8]}...{password[-8:]}` (masked, see JSON)\n")
+                    f.write(f"- User ID: {user_id}\n\n")
+                typer.echo(f"📝 Info appended to: {info_file}")
+            else:
+                typer.echo(f"\n⚠️  /app/runtime does not exist, credentials not saved to disk")
+        else:
+            typer.echo("⚠️  User created but could not verify", err=True)
+
+    except psycopg2.Error as e:
+        conn.rollback()
+        typer.echo(f"❌ Failed to reset admin: {e}", err=True)
         raise typer.Exit(code=1)
     finally:
         cur.close()
