@@ -121,6 +121,7 @@ services:
     volumes:
       - ${CERTS_DIR:-./certificates}:/app/certs:ro
       - ${DATA_DIR:-./data}/backups:/app/backups
+      - ${SECRETS_DIR:-./secrets}:/app/infra/secrets
     ports:
       - "8000:8000"
     depends_on:

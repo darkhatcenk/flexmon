@@ -369,6 +369,13 @@ docker exec flexmon-api python -m src.manage create-admin \
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Platform admin created${NC}"
+
+    # Check if password was written to host-mounted file
+    if [ -f ./secrets/platform_admin_pwd.txt ]; then
+        echo -e "${GREEN}✓ Platform admin password saved to ./secrets/platform_admin_pwd.txt${NC}"
+    else
+        echo -e "${YELLOW}⚠ Warning: password file not found; check container logs${NC}"
+    fi
 else
     echo -e "${RED}✗ Failed to create platform admin${NC}"
     echo -e "${YELLOW}⚠ You may need to create the admin manually using:${NC}"

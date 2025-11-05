@@ -15,7 +15,7 @@ import typer
 import psycopg2
 from passlib.hash import bcrypt_sha256
 
-from migrations import run_online_migrations
+from .migrations import run_online_migrations
 
 app = typer.Typer(help="FlexMON Management CLI")
 
@@ -50,6 +50,32 @@ def get_db_connection():
     except psycopg2.Error as e:
         typer.echo(f"❌ Database connection failed: {e}", err=True)
         raise typer.Exit(code=1)
+
+
+def write_password_to_host(password: str, username: str = "platform_admin"):
+    """
+    Write admin password to host-mounted file for persistence
+
+    This allows the password to be accessed from the host machine at:
+    infra/secrets/platform_admin_pwd.txt
+    """
+    host_password_file = Path("/app/infra/secrets/platform_admin_pwd.txt")
+
+    try:
+        # Create parent directories if they don't exist
+        host_password_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write just the plain password (no JSON, no extra newlines)
+        with open(host_password_file, 'w') as f:
+            f.write(password)
+
+        typer.echo(f"✅ Platform admin password also written to {host_password_file}")
+        return True
+
+    except (IOError, OSError, PermissionError) as e:
+        typer.echo(f"⚠️  Warning: Could not write password to {host_password_file}: {e}", err=True)
+        typer.echo(f"   This is non-fatal, but you'll need to retrieve password from container logs or /app/runtime/admin_credentials.json")
+        return False
 
 
 @app.command()
@@ -96,6 +122,9 @@ def create_admin(
             typer.echo(f"   Role: platform_admin")
             typer.echo(f"   Email: {email or 'not set'}")
             typer.echo(f"   Created: {user[1]}")
+
+            # Write password to host-mounted file for persistence
+            write_password_to_host(password, username)
         else:
             typer.echo("⚠️  User created but could not verify", err=True)
 
@@ -208,6 +237,9 @@ def reset_admin(
                 f.write(f"- Password: `{password[:8]}...{password[-8:]}` (masked, see JSON)\n")
                 f.write(f"- User ID: {user_id}\n\n")
             typer.echo(f"📝 Info appended to: {info_file}")
+
+            # Write password to host-mounted file for persistence
+            write_password_to_host(password, username)
         else:
             typer.echo("⚠️  User created but could not verify", err=True)
 
