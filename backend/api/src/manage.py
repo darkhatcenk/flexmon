@@ -15,6 +15,8 @@ import typer
 import psycopg2
 from passlib.hash import bcrypt_sha256
 
+from migrations import run_online_migrations
+
 app = typer.Typer(help="FlexMON Management CLI")
 
 
@@ -121,6 +123,18 @@ def reset_admin(
     """
     typer.echo(f"🔐 Resetting platform admin: {username}")
 
+    # Connect to database
+    conn = get_db_connection()
+
+    # Run online migrations first to ensure updated_at column exists
+    typer.echo("🔧 Running online migrations...")
+    success, message = run_online_migrations(conn)
+    if not success:
+        typer.echo(f"❌ Migration failed: {message}", err=True)
+        conn.close()
+        raise typer.Exit(code=1)
+    typer.echo(f"✅ {message}")
+
     # Generate strong password (48 chars, URL-safe, no padding)
     # Using 36 random bytes gives us 48 chars of base64url
     password = base64.urlsafe_b64encode(secrets.token_bytes(36)).decode('ascii').rstrip('=')
@@ -134,12 +148,10 @@ def reset_admin(
     # Hash the password with bcrypt_sha256 (no 72-byte limit)
     password_hash = bcrypt_sha256.hash(password)
 
-    # Connect to database
-    conn = get_db_connection()
     cur = conn.cursor()
 
     try:
-        # Upsert the user
+        # Upsert the user (updated_at now exists after migration)
         cur.execute("""
             INSERT INTO users (username, email, password_hash, role, tenant_id, enabled, created_at)
             VALUES (%s, %s, %s, 'platform_admin', NULL, TRUE, NOW())
@@ -172,31 +184,30 @@ def reset_admin(
             typer.echo(f"   Password: {password}")
             typer.echo(f"\n⚠️  This password will NOT be shown again!")
 
-            # Write credentials to runtime directory if it exists
+            # Write credentials to runtime directory (create if not exists)
             runtime_dir = Path("/app/runtime")
-            if runtime_dir.exists():
-                # Write JSON for programmatic access
-                creds_file = runtime_dir / "admin_credentials.json"
-                creds_data = {
-                    "username": username,
-                    "password": password,
-                    "timestamp": timestamp,
-                    "user_id": user_id
-                }
-                with open(creds_file, 'w') as f:
-                    json.dump(creds_data, f, indent=2)
-                typer.echo(f"\n📝 Credentials written to: {creds_file}")
+            runtime_dir.mkdir(parents=True, exist_ok=True)
 
-                # Append to info.md for human-readable tracking
-                info_file = runtime_dir / "info.md"
-                with open(info_file, 'a') as f:
-                    f.write(f"\n## Admin Reset - {timestamp}\n")
-                    f.write(f"- Username: `{username}`\n")
-                    f.write(f"- Password: `{password[:8]}...{password[-8:]}` (masked, see JSON)\n")
-                    f.write(f"- User ID: {user_id}\n\n")
-                typer.echo(f"📝 Info appended to: {info_file}")
-            else:
-                typer.echo(f"\n⚠️  /app/runtime does not exist, credentials not saved to disk")
+            # Write JSON for programmatic access
+            creds_file = runtime_dir / "admin_credentials.json"
+            creds_data = {
+                "username": username,
+                "password": password,
+                "timestamp": timestamp,
+                "user_id": user_id
+            }
+            with open(creds_file, 'w') as f:
+                json.dump(creds_data, f, indent=2)
+            typer.echo(f"\n📝 Credentials written to: {creds_file}")
+
+            # Append to info.md for human-readable tracking
+            info_file = runtime_dir / "info.md"
+            with open(info_file, 'a') as f:
+                f.write(f"\n## Admin Reset - {timestamp}\n")
+                f.write(f"- Username: `{username}`\n")
+                f.write(f"- Password: `{password[:8]}...{password[-8:]}` (masked, see JSON)\n")
+                f.write(f"- User ID: {user_id}\n\n")
+            typer.echo(f"📝 Info appended to: {info_file}")
         else:
             typer.echo("⚠️  User created but could not verify", err=True)
 
@@ -267,16 +278,25 @@ def reset_password(
     """
     typer.echo(f"🔧 Resetting password for user: {username}")
 
+    # Connect to database
+    conn = get_db_connection()
+
+    # Run online migrations first to ensure updated_at column exists
+    success, message = run_online_migrations(conn)
+    if not success:
+        typer.echo(f"⚠️  Migration failed: {message}", err=True)
+        # Continue anyway for password reset
+
     # Hash the password with bcrypt_sha256 (no 72-byte limit)
     password_hash = bcrypt_sha256.hash(password)
 
-    conn = get_db_connection()
     cur = conn.cursor()
 
     try:
         cur.execute("""
             UPDATE users
-            SET password_hash = %s
+            SET password_hash = %s,
+                updated_at = NOW()
             WHERE username = %s
         """, (password_hash, username))
 
