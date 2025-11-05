@@ -1,15 +1,7 @@
 import axios, { AxiosInstance } from 'axios'
 
-// Fallback baseURL: same origin + "/api" if VITE_API_BASE_URL is not set
-const fallbackBase = ((): string => {
-  if (typeof window !== 'undefined') {
-    const origin = window.location.origin.replace(/\/$/, '')
-    return origin ? `${origin}/api` : ''
-  }
-  return ''
-})()
-
-const baseURL = import.meta.env.VITE_API_BASE_URL || fallbackBase || '/v1'
+// Fallback baseURL: use "/api" which Nginx proxies to backend
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 // Create axios instance with named export
 export const api: AxiosInstance = axios.create({
