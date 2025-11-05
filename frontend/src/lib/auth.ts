@@ -21,13 +21,15 @@ interface AuthState {
   token: string | null
   user: User | null
   isAuthenticated: boolean
+  isBootstrapping: boolean
 }
 
 class AuthStore {
   private state: AuthState = {
     token: null,
     user: null,
-    isAuthenticated: false
+    isAuthenticated: false,
+    isBootstrapping: true
   }
 
   private listeners: Set<() => void> = new Set()
@@ -53,9 +55,20 @@ class AuthStore {
     const token = localStorage.getItem(TOKEN_KEY)
     if (token) {
       this.state.token = token
-      this.state.isAuthenticated = true
-      // User will be loaded async via fetchCurrentUser
+      // Don't set isAuthenticated=true until user is verified
     }
+  }
+
+  async bootstrap(): Promise<void> {
+    this.state.isBootstrapping = true
+    this.notify()
+
+    if (this.state.token) {
+      await this.fetchCurrentUser()
+    }
+
+    this.state.isBootstrapping = false
+    this.notify()
   }
 
   async fetchCurrentUser(): Promise<User | null> {
@@ -71,7 +84,11 @@ class AuthStore {
       return response.data
     } catch (error) {
       // Token invalid or expired
-      this.logout()
+      this.state.token = null
+      this.state.user = null
+      this.state.isAuthenticated = false
+      localStorage.removeItem(TOKEN_KEY)
+      this.notify()
       return null
     }
   }
