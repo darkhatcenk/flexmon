@@ -1357,3 +1357,4 @@ docker compose logs -f api    # Check logs for any issues
 2025-11-04 14:00 UTC — feat(auth+ui): add login flow, JWT persistence, guarded routes & RBAC; Settings→Change Password; modernized header/cards/buttons; hide platform_admin in Users
 2025-11-04 14:15 UTC — fix(auth): POST /v1/auth/login + /api proxy via Nginx; axios base '/api'; route guard redirects unauthenticated users to /login
 2025-11-05 14:30 UTC — fix(auth): non-blank guarded bootstrap → /login redirect; add offline admin reset command printing credentials; ensure nginx /api proxy; axios base '/api'
+2025-11-05 15:00 UTC — fix(db): add online migration for users.created_at/updated_at and run it from reset-admin; robust UPSERT now succeeds
