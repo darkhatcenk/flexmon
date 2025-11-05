@@ -40,12 +40,34 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info("Starting FlexMON API...")
     logger.info(f"Version: {VERSION_INFO['version']}, Build: {VERSION_INFO['build']}")
 
-    # Initialize database connections
+    # Initialize database connections (REQUIRED - must succeed)
     try:
         logger.info("Connecting to TimescaleDB...")
         await timescale.init_db()
         logger.info("✓ TimescaleDB connected")
 
+        # Run online migrations to ensure schema is up to date
+        try:
+            logger.info("Running online migrations...")
+            from .migrations import run_online_migrations
+            conn = await timescale.pool.acquire()
+            try:
+                success, message = run_online_migrations(conn)
+                if success:
+                    logger.info(f"✓ Migrations: {message}")
+                else:
+                    logger.warning(f"⚠ Migrations: {message}")
+            finally:
+                await timescale.pool.release(conn)
+        except Exception as e:
+            logger.warning(f"⚠ Migration check failed: {e}")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize TimescaleDB: {e}")
+        raise
+
+    # Initialize Elasticsearch (OPTIONAL - non-fatal)
+    try:
         logger.info("Connecting to Elasticsearch...")
         await elastic.init_es()
         logger.info("✓ Elasticsearch connected")
@@ -56,8 +78,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         logger.info("✓ Elasticsearch templates loaded")
 
     except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
-        raise
+        logger.warning(f"⚠ Elasticsearch initialization failed: {e}")
+        logger.warning("  Login and core features will work, but log search will be unavailable")
 
     # Start background tasks
     logger.info("Starting background tasks...")
@@ -71,7 +93,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Cleanup on shutdown
     logger.info("Shutting down FlexMON API...")
     await timescale.close_db()
-    await elastic.close_es()
+    try:
+        await elastic.close_es()
+    except Exception as e:
+        logger.warning(f"Error closing Elasticsearch: {e}")
     logger.info("Shutdown complete")
 
 
@@ -102,7 +127,7 @@ async def global_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "error": str(exc)}
+        content={"detail": "Internal server error"}
     )
 
 
